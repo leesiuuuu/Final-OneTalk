@@ -69,10 +69,12 @@ export async function quickMatch(nickname, difficulty) {
   return result;
 }
 
-export async function createPrivateRoom(nickname, difficulty) {
+export async function createPrivateRoom(nickname, difficulty, settings) {
   closeStreams();
   state.startedRoom = null;
-  const room = await request('/api/rooms', { method: 'POST', body: JSON.stringify(playerData(nickname, difficulty)) });
+  const room = await request('/api/rooms', {
+    method: 'POST', body: JSON.stringify({ ...playerData(nickname, difficulty), settings }),
+  });
   connectRoom(room);
   return room;
 }

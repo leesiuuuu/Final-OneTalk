@@ -501,8 +501,9 @@ function setMode(mode) {
     button.classList.toggle('selected', selected);
     button.setAttribute('aria-selected', String(selected));
   });
+  $('#single-mode-options').classList.toggle('hidden', mode !== 'single');
   $('#multiplayer-controls').classList.toggle('hidden', mode !== 'multi');
-  $('#start-button').innerHTML = mode === 'multi' ? '빠른 매칭 <span>⚡</span>' : '면접실 입장 <span>→</span>';
+  $('#start-button').innerHTML = mode === 'multi' ? '빠른 매칭 · 표준 규칙 <span>⚡</span>' : '면접실 입장 <span>→</span>';
 }
 
 function nickname() {
@@ -541,13 +542,29 @@ $('#nickname-input').value = localStorage.getItem('interview-nickname') || '';
 $$('.mode-tab').forEach(button => button.addEventListener('click', () => setMode(button.dataset.mode)));
 $('#start-button').addEventListener('click', () => {
   if (gameMode === 'single') beginGame();
-  else enterMultiplayer(() => quickMatch(nickname(), selectedDifficulty));
+  else enterMultiplayer(() => quickMatch(nickname(), 'sme'));
 });
-$('#create-room-button').addEventListener('click', () => enterMultiplayer(() => createPrivateRoom(nickname(), selectedDifficulty)));
+function multiplayerSetup() {
+  const maxWords = Number($('#setup-max-words').value);
+  const secondsPerWord = Number($('#setup-seconds-per-word').value);
+  const difficulty = maxWords <= 8 ? 'startup' : maxWords <= 12 ? 'sme' : 'enterprise';
+  return { difficulty, settings: { maxWords, secondsPerWord } };
+}
+function previewMultiplayerSetup() {
+  const { settings } = multiplayerSetup();
+  const total = settings.maxWords * settings.secondsPerWord;
+  $('#setup-time-preview').textContent = Number.isFinite(total) ? `${total.toFixed(1)}초` : '--';
+}
+$('#setup-max-words').addEventListener('input', previewMultiplayerSetup);
+$('#setup-seconds-per-word').addEventListener('input', previewMultiplayerSetup);
+$('#create-room-button').addEventListener('click', () => {
+  const setup = multiplayerSetup();
+  enterMultiplayer(() => createPrivateRoom(nickname(), setup.difficulty, setup.settings));
+});
 $('#join-room-button').addEventListener('click', () => {
   const code = $('#room-code-input').value.trim();
   if (!code) return flash('초대 코드를 입력해 주세요');
-  enterMultiplayer(() => joinPrivateRoom(code, nickname(), selectedDifficulty));
+  enterMultiplayer(() => joinPrivateRoom(code, nickname(), 'sme'));
 });
 $('#ready-button').addEventListener('click', () => setReady(true).catch(error => flash(error.message)));
 async function saveRoomRules() {
@@ -606,13 +623,28 @@ $('#game-screen').addEventListener('click', event => {
   if (!roundClosed && !event.target.closest('button')) $('#word-input').focus();
 });
 
-function renderAudioToggle() {
+function renderAudioSettings() {
   const button = $('#audio-toggle');
-  const muted = audioSystem.isMuted();
-  button.textContent = muted ? 'SND OFF' : 'SND ON';
+  const master = $('#audio-master-toggle');
+  const { muted, musicVolume, effectsVolume } = audioSystem.getSettings();
+  const musicPercent = Math.round(musicVolume * 100);
+  const effectsPercent = Math.round(effectsVolume * 100);
+  button.textContent = muted ? 'SOUND OFF' : 'SOUND';
   button.classList.toggle('muted', muted);
-  button.setAttribute('aria-pressed', String(muted));
-  button.setAttribute('aria-label', muted ? '사운드 켜기' : '사운드 끄기');
+  master.textContent = muted ? '전체 사운드 켜기' : '전체 사운드 끄기';
+  master.classList.toggle('sound-off', muted);
+  $('#bgm-volume').value = musicPercent;
+  $('#sfx-volume').value = effectsPercent;
+  $('#bgm-volume-value').textContent = musicPercent;
+  $('#sfx-volume-value').textContent = effectsPercent;
+}
+
+function toggleAudioPanel(force) {
+  const panel = $('#audio-panel');
+  const open = force ?? panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !open);
+  $('#audio-toggle').setAttribute('aria-expanded', String(open));
+  $('#audio-toggle').setAttribute('aria-label', open ? '사운드 설정 닫기' : '사운드 설정 열기');
 }
 
 document.addEventListener('pointerover', event => {
@@ -625,7 +657,24 @@ document.addEventListener('click', event => {
   if (event.target.closest?.('button:not(:disabled)')) audioSystem.uiClick();
 }, true);
 $('#audio-toggle').addEventListener('click', () => {
-  audioSystem.toggleMute();
-  renderAudioToggle();
+  toggleAudioPanel();
 });
-renderAudioToggle();
+$('#audio-master-toggle').addEventListener('click', () => {
+  audioSystem.toggleMute();
+  renderAudioSettings();
+});
+$('#bgm-volume').addEventListener('input', event => {
+  audioSystem.unlock();
+  audioSystem.setMusicVolume(Number(event.currentTarget.value) / 100);
+  renderAudioSettings();
+});
+$('#sfx-volume').addEventListener('input', event => {
+  audioSystem.unlock();
+  audioSystem.setEffectsVolume(Number(event.currentTarget.value) / 100);
+  renderAudioSettings();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') toggleAudioPanel(false);
+});
+renderAudioSettings();
+previewMultiplayerSetup();

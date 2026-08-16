@@ -55,6 +55,15 @@ function safePlayer(input = {}) {
   return { playerId, nickname, difficulty, rating: Number(input.rating) || 1000 };
 }
 
+function safeRoomSettings(input, fallback) {
+  if (!input) return { ...fallback };
+  const maxWords = Math.round(Number(input.maxWords));
+  const secondsPerWord = Math.round(Number(input.secondsPerWord) * 10) / 10;
+  if (!Number.isFinite(maxWords) || maxWords < 5 || maxWords > 25) throw new Error('최대 어절 수는 5~25로 설정해 주세요.');
+  if (!Number.isFinite(secondsPerWord) || secondsPerWord < 1 || secondsPerWord > 4) throw new Error('어절당 제한 시간은 1.0~4.0초로 설정해 주세요.');
+  return { maxWords, secondsPerWord };
+}
+
 function makeCode() {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code;
@@ -108,7 +117,7 @@ function broadcast(room, event = 'room') {
   }
 }
 
-function createRoom(owner, provider = 'local', requestedCode, kind = 'private') {
+function createRoom(owner, provider = 'local', requestedCode, kind = 'private', requestedSettings) {
   const code = requestedCode || makeCode();
   const defaults = {
     startup: { maxWords: 8, secondsPerWord: 2.5 },
@@ -117,7 +126,7 @@ function createRoom(owner, provider = 'local', requestedCode, kind = 'private') 
   };
   const room = {
     code, provider, kind, ownerId: owner.playerId, difficulty: owner.difficulty, status: 'waiting', startAt: null,
-    settings: { ...defaults[owner.difficulty] },
+    settings: safeRoomSettings(requestedSettings, defaults[owner.difficulty]),
     players: new Map(), streams: new Map(), createdAt: Date.now(),
   };
   addPlayer(room, owner);
@@ -219,8 +228,9 @@ async function api(req, res, url) {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/rooms') {
-    const owner = safePlayer(JSON.parse((await readBody(req)).toString() || '{}'));
-    const room = createRoom(owner);
+    const input = JSON.parse((await readBody(req)).toString() || '{}');
+    const owner = safePlayer(input);
+    const room = createRoom(owner, 'local', undefined, 'private', input.settings);
     return sendJson(res, 201, publicRoom(room, owner.playerId));
   }
 
@@ -293,11 +303,7 @@ async function api(req, res, url) {
     if (room.kind !== 'private') throw new Error('친구 방에서만 규칙을 변경할 수 있습니다.');
     if (room.ownerId !== input.playerId) throw new Error('방장만 규칙을 변경할 수 있습니다.');
     if (room.status !== 'waiting') throw new Error('게임 시작 후에는 규칙을 변경할 수 없습니다.');
-    const maxWords = Math.round(Number(input.maxWords));
-    const secondsPerWord = Math.round(Number(input.secondsPerWord) * 10) / 10;
-    if (!Number.isFinite(maxWords) || maxWords < 5 || maxWords > 25) throw new Error('최대 어절 수는 5~25로 설정해 주세요.');
-    if (!Number.isFinite(secondsPerWord) || secondsPerWord < 1 || secondsPerWord > 4) throw new Error('어절당 제한 시간은 1.0~4.0초로 설정해 주세요.');
-    room.settings = { maxWords, secondsPerWord };
+    room.settings = safeRoomSettings(input, room.settings);
     room.players.forEach(player => { player.ready = false; });
     broadcast(room);
     return sendJson(res, 200, publicRoom(room, input.playerId));

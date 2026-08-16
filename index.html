@@ -23,34 +23,46 @@
           <button class="mode-tab selected" data-mode="single" role="tab" aria-selected="true">싱글 플레이</button>
           <button class="mode-tab" data-mode="multi" role="tab" aria-selected="false">멀티 레이스</button>
         </div>
-        <div class="card-heading">
-          <span>지원할 회사를 선택하세요</span>
-          <span class="live-dot">ONLINE</span>
-        </div>
-        <div class="difficulty-list" role="radiogroup" aria-label="난이도 선택">
-          <button class="difficulty-option selected" data-difficulty="startup" role="radio" aria-checked="true">
-            <span class="option-index">01</span>
-            <span><strong>스타트업</strong><small>입문 · 5~8어절 · 여유 있는 답변</small></span>
-            <span class="option-time">2.5<small>초/어절</small></span>
-          </button>
-          <button class="difficulty-option" data-difficulty="sme" role="radio" aria-checked="false">
-            <span class="option-index">02</span>
-            <span><strong>중소기업</strong><small>보통 · 8~12어절 · 현실적인 압박</small></span>
-            <span class="option-time">2.0<small>초/어절</small></span>
-          </button>
-          <button class="difficulty-option" data-difficulty="enterprise" role="radio" aria-checked="false">
-            <span class="option-index">03</span>
-            <span><strong>대기업</strong><small>고난도 · 12~16어절 · 숨 막히는 면접</small></span>
-            <span class="option-time">1.5<small>초/어절</small></span>
-          </button>
+        <div id="single-mode-options">
+          <div class="card-heading">
+            <span>지원할 회사를 선택하세요</span>
+            <span class="live-dot">ONLINE</span>
+          </div>
+          <div class="difficulty-list" role="radiogroup" aria-label="난이도 선택">
+            <button class="difficulty-option selected" data-difficulty="startup" role="radio" aria-checked="true">
+              <span class="option-index">01</span>
+              <span><strong>스타트업</strong><small>입문 · 5~8어절 · 여유 있는 답변</small></span>
+              <span class="option-time">2.5<small>초/어절</small></span>
+            </button>
+            <button class="difficulty-option" data-difficulty="sme" role="radio" aria-checked="false">
+              <span class="option-index">02</span>
+              <span><strong>중소기업</strong><small>보통 · 8~12어절 · 현실적인 압박</small></span>
+              <span class="option-time">2.0<small>초/어절</small></span>
+            </button>
+            <button class="difficulty-option" data-difficulty="enterprise" role="radio" aria-checked="false">
+              <span class="option-index">03</span>
+              <span><strong>대기업</strong><small>고난도 · 12~16어절 · 숨 막히는 면접</small></span>
+              <span class="option-time">1.5<small>초/어절</small></span>
+            </button>
+          </div>
         </div>
         <div id="multiplayer-controls" class="multiplayer-controls hidden">
+          <div class="multiplayer-heading">
+            <span><strong>MULTIPLAYER SETUP</strong><small>최대 4명이 같은 규칙으로 경쟁합니다</small></span>
+            <span class="live-dot">ONLINE</span>
+          </div>
           <label>닉네임<input id="nickname-input" maxlength="12" placeholder="지원자" autocomplete="nickname"></label>
+          <fieldset class="multiplayer-rule-setup">
+            <legend>친구 방 생성 규칙</legend>
+            <label><span>답변 최대 어절</span><input id="setup-max-words" type="number" min="5" max="25" step="1" value="12"><b>어절</b></label>
+            <label><span>어절당 제한 시간</span><input id="setup-seconds-per-word" type="number" min="1" max="4" step="0.1" value="2.0"><b>초</b></label>
+            <p>최대 문항 시간 <strong id="setup-time-preview">24.0초</strong></p>
+          </fieldset>
           <div class="room-code-row">
             <input id="room-code-input" maxlength="5" placeholder="초대 코드" aria-label="초대 코드">
             <button id="join-room-button" class="secondary-button">참가</button>
           </div>
-          <button id="create-room-button" class="secondary-button wide">친구 방 만들기</button>
+          <button id="create-room-button" class="secondary-button wide">이 설정으로 친구 방 만들기</button>
         </div>
         <button id="start-button" class="primary-button">면접실 입장 <span>→</span></button>
         <p class="key-hint"><kbd>SPACE</kbd> 어절 확정 · <kbd>ENTER</kbd> 답변 제출</p>
@@ -173,7 +185,15 @@
       <button id="restart-button" class="primary-button">다시 지원하기 <span>↻</span></button>
     </section>
   </main>
-  <button id="audio-toggle" class="audio-toggle" aria-label="사운드 끄기" aria-pressed="false">SND ON</button>
+  <div class="audio-settings">
+    <div id="audio-panel" class="audio-panel hidden" role="dialog" aria-label="사운드 설정">
+      <div class="audio-panel-heading"><strong>SOUND SETTINGS</strong><span>VOL</span></div>
+      <label><span>BGM</span><input id="bgm-volume" type="range" min="0" max="100" step="5"><output id="bgm-volume-value">80</output></label>
+      <label><span>효과음</span><input id="sfx-volume" type="range" min="0" max="100" step="5"><output id="sfx-volume-value">85</output></label>
+      <button id="audio-master-toggle" class="secondary-button wide">전체 사운드 끄기</button>
+    </div>
+    <button id="audio-toggle" class="audio-toggle" aria-label="사운드 설정 열기" aria-expanded="false">SOUND</button>
+  </div>
   <div id="toast" class="toast" role="status"></div>
   <script type="module" src="./game.mjs?v=17"></script>
 </body>

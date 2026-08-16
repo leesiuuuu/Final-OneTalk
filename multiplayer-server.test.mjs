@@ -77,6 +77,23 @@ test('친구 방 세부 규칙은 방장만 시작 전에 변경할 수 있다',
   });
 });
 
+test('친구 방 생성 시 선택한 세부 규칙을 바로 적용한다', async () => {
+  await withServer(async base => {
+    const created = await post(base, '/api/rooms', {
+      playerId: 'custom-owner', nickname: '설정방장', difficulty: 'enterprise',
+      settings: { maxWords: 21, secondsPerWord: 1.7 },
+    });
+    assert.equal(created.status, 201);
+    assert.deepEqual(created.data.settings, { maxWords: 21, secondsPerWord: 1.7 });
+
+    const invalid = await post(base, '/api/rooms', {
+      playerId: 'invalid-owner', nickname: '오류방', difficulty: 'startup',
+      settings: { maxWords: 26, secondsPerWord: 0.5 },
+    });
+    assert.equal(invalid.status, 400);
+  });
+});
+
 test('Hive 콜백 HMAC-SHA256 서명을 검증한다', () => {
   const body = Buffer.from('{"matchingInfos":[]}');
   const secret = 'callback-secret';

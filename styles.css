@@ -965,6 +965,18 @@ kbd {
 .multiplayer-controls input { width: 100%; min-width: 0; height: 38px; border: 3px solid var(--ink); border-radius: 0; padding: 0 10px; background: var(--cream); color: var(--ink); font: inherit; outline: none; }
 .multiplayer-controls input:focus { box-shadow: inset 0 0 0 2px var(--red); }
 .room-code-row { display: grid; grid-template-columns: 1fr 90px; gap: 8px; }
+.multiplayer-heading { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding-bottom: 9px; border-bottom: 2px dashed #aaa087; }
+.multiplayer-heading strong,
+.multiplayer-heading small { display: block; }
+.multiplayer-heading strong { color: var(--red); font-size: 11px; }
+.multiplayer-heading small { margin-top: 5px; color: #676356; font-size: 8px; font-weight: 400; }
+.multiplayer-rule-setup { display: grid; gap: 7px; margin: 2px 0; padding: 10px; border: 2px solid var(--ink); background: var(--cream); }
+.multiplayer-rule-setup legend { padding: 0 6px; color: var(--red); font-size: 9px; font-weight: 700; }
+.multiplayer-rule-setup label { grid-template-columns: 1fr 68px 24px; gap: 7px; }
+.multiplayer-rule-setup input { height: 32px; text-align: center; }
+.multiplayer-rule-setup b { font-size: 9px; }
+.multiplayer-rule-setup p { margin: 0; padding-top: 6px; border-top: 1px dashed #aaa087; color: #676356; font-size: 9px; text-align: right; }
+.multiplayer-rule-setup p strong { color: var(--red); }
 .secondary-button { min-height: 42px; border: 3px solid var(--ink); border-radius: 0; background: var(--cream); color: var(--ink); box-shadow: 4px 4px 0 var(--ink); font-family: inherit; font-weight: 700; cursor: pointer; }
 .secondary-button:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); }
 .secondary-button.wide { width: 100%; }
@@ -1015,7 +1027,32 @@ kbd {
   .opponent-row + .opponent-row { padding-left: 7px; }
   .lobby-players { grid-template-columns: 1fr 1fr; }
   .multiplayer-controls label { grid-template-columns: 1fr; gap: 6px; text-align: left; }
+  .multiplayer-rule-setup label { grid-template-columns: 1fr 64px 20px; align-items: center; }
 }
+
+/* Start controls and sound mixer -------------------------------------- */
+.key-hint { margin: 26px 0 3px; }
+
+.audio-settings { position: fixed; z-index: 1000; right: 14px; bottom: 14px; font-family: Galmuri11, monospace; }
+.audio-settings .audio-toggle { position: static; min-width: 88px; }
+.audio-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: 264px;
+  padding: 13px;
+  border: 3px solid var(--ink);
+  background: var(--cream);
+  color: var(--ink);
+  box-shadow: 6px 6px 0 #05070b;
+}
+.audio-panel-heading { display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px dashed #aaa087; color: var(--red); font-size: 10px; }
+.audio-panel-heading span { color: #77736d; }
+.audio-panel label { display: grid; grid-template-columns: 48px 1fr 30px; align-items: center; gap: 8px; margin: 10px 0; font-size: 9px; font-weight: 700; }
+.audio-panel output { color: var(--red); text-align: right; }
+.audio-panel input[type="range"] { width: 100%; accent-color: var(--red); cursor: pointer; }
+.audio-panel .secondary-button { min-height: 34px; margin-top: 12px; font-size: 9px; box-shadow: 3px 3px 0 var(--ink); }
+.audio-panel .sound-off { background: #77736d; color: white; }
 
 .interviewer,
 .typing-panel,

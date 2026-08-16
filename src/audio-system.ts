@@ -17,6 +17,15 @@ class PixelAudioSystem {
   private bgmIntroPlayed = false;
   private mood: Mood = 'menu';
   private muted = localStorage.getItem('intalk-muted') === 'true';
+  private musicVolume = this.savedVolume('intalk-bgm-volume', 0.8);
+  private effectsVolume = this.savedVolume('intalk-sfx-volume', 0.85);
+
+  private savedVolume(key: string, fallback: number) {
+    const stored = localStorage.getItem(key);
+    if (stored === null) return fallback;
+    const value = Number(stored);
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : fallback;
+  }
 
   unlock() {
     if (!this.context) {
@@ -40,6 +49,22 @@ class PixelAudioSystem {
 
   isMuted() { return this.muted; }
 
+  getSettings() {
+    return { muted: this.muted, musicVolume: this.musicVolume, effectsVolume: this.effectsVolume };
+  }
+
+  setMusicVolume(value: number) {
+    this.musicVolume = Math.min(1, Math.max(0, value));
+    localStorage.setItem('intalk-bgm-volume', String(this.musicVolume));
+    this.applyVolume();
+  }
+
+  setEffectsVolume(value: number) {
+    this.effectsVolume = Math.min(1, Math.max(0, value));
+    localStorage.setItem('intalk-sfx-volume', String(this.effectsVolume));
+    this.applyVolume();
+  }
+
   toggleMute() {
     this.muted = !this.muted;
     localStorage.setItem('intalk-muted', String(this.muted));
@@ -57,8 +82,8 @@ class PixelAudioSystem {
   private applyVolume() {
     if (!this.context || !this.musicGain || !this.sfxGain) return;
     const now = this.context.currentTime;
-    this.musicGain.gain.setTargetAtTime(this.muted ? 0 : 0.2, now, 0.025);
-    this.sfxGain.gain.setTargetAtTime(this.muted ? 0 : 0.42, now, 0.015);
+    this.musicGain.gain.setTargetAtTime(this.muted ? 0 : 0.25 * this.musicVolume, now, 0.025);
+    this.sfxGain.gain.setTargetAtTime(this.muted ? 0 : 0.5 * this.effectsVolume, now, 0.015);
   }
 
   private tone(frequency: number, duration = 0.08, delay = 0, volume = 0.12, wave: Wave = 'square', endFrequency?: number) {
