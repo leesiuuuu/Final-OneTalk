@@ -16,6 +16,10 @@ npm start
 
 프로젝트는 Railway의 `PORT` 환경 변수를 사용해 `0.0.0.0`에서 실행되며, `railway.json`에 시작 명령과 `/api/health` 상태 확인 경로가 설정되어 있습니다. GitHub 저장소를 Railway에 연결한 뒤 `Generate Domain`을 선택하면 별도 빌드 설정 없이 배포할 수 있습니다. 현재 방 상태는 메모리에 있으므로 Railway 서비스는 1개 Replica로 유지하세요.
 
+## Render 무료 배포
+
+`render.yaml`에 무료 Web Service 설정이 포함되어 있습니다. Render Dashboard에서 Blueprint를 만들고 이 GitHub 저장소를 연결하면 `npm start`, `/api/health`, Node 20 설정이 자동 적용됩니다. 무료 서비스는 15분 동안 요청이 없으면 잠들 수 있으므로 첫 접속 때 잠시 기다린 뒤 새로고침하세요.
+
 ## 조작
 
 - 글자 입력: 현재 어절 편집
