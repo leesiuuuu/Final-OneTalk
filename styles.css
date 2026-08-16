@@ -400,7 +400,21 @@ button { border-radius: 0 !important; }
     8px 8px 0 #3b419c;
 }
 
+.hero-copy h1 small {
+  display: block;
+  font-size: .72em;
+  line-height: 1.05;
+  letter-spacing: .01em;
+}
+
 .hero-copy h1 span {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  font-size: .7em;
+  line-height: 1.18;
+  letter-spacing: -.08em;
+  white-space: nowrap;
   color: var(--lime);
   text-shadow:
     4px 0 0 var(--ink), -4px 0 0 var(--ink),

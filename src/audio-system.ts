@@ -13,6 +13,7 @@ class PixelAudioSystem {
   private sfxGain: GainNode | null = null;
   private bgmTimer = 0;
   private bgmStep = 0;
+  private bgmIntroPlayed = false;
   private mood: Mood = 'menu';
   private muted = localStorage.getItem('intalk-muted') === 'true';
 
@@ -27,7 +28,13 @@ class PixelAudioSystem {
       this.applyVolume();
       this.startBgm();
     }
-    if (this.context.state === 'suspended') void this.context.resume();
+    const playIntro = () => {
+      if (this.bgmIntroPlayed || this.muted) return;
+      this.bgmIntroPlayed = true;
+      [NOTES.C4, NOTES.E4, NOTES.G4].forEach((note, index) => this.musicTone(note, 0.28, 0.16 - index * 0.025, index === 1 ? 'triangle' : 'square'));
+    };
+    if (this.context.state === 'suspended') void this.context.resume().then(playIntro);
+    else playIntro();
   }
 
   isMuted() { return this.muted; }
@@ -45,7 +52,7 @@ class PixelAudioSystem {
   private applyVolume() {
     if (!this.context || !this.musicGain || !this.sfxGain) return;
     const now = this.context.currentTime;
-    this.musicGain.gain.setTargetAtTime(this.muted ? 0 : 0.07, now, 0.025);
+    this.musicGain.gain.setTargetAtTime(this.muted ? 0 : 0.2, now, 0.025);
     this.sfxGain.gain.setTargetAtTime(this.muted ? 0 : 0.42, now, 0.015);
   }
 
@@ -87,9 +94,9 @@ class PixelAudioSystem {
       if (document.hidden || !this.context || this.context.state !== 'running') return;
       const melody = this.mood === 'result' ? result : this.mood === 'game' || this.mood === 'danger' ? game : menu;
       const note = melody[this.bgmStep % melody.length];
-      this.musicTone(note * (this.mood === 'danger' && this.bgmStep % 2 ? 2 : 1), 0.16, this.mood === 'danger' ? 0.12 : 0.08);
-      if (this.bgmStep % 2 === 0) this.musicTone(this.bgmStep % 4 ? NOTES.G3 : NOTES.C3, 0.2, 0.07, 'triangle');
-      if (this.mood === 'danger') this.musicTone(90, 0.035, 0.045, 'square');
+      this.musicTone(note * (this.mood === 'danger' && this.bgmStep % 2 ? 2 : 1), 0.17, this.mood === 'danger' ? 0.16 : 0.13);
+      if (this.bgmStep % 2 === 0) this.musicTone(this.bgmStep % 4 ? NOTES.G3 : NOTES.C3, 0.21, 0.11, 'triangle');
+      if (this.mood === 'danger') this.musicTone(90, 0.04, 0.075, 'square');
       this.bgmStep += 1;
     }, 210);
   }
