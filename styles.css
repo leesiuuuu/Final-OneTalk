@@ -855,6 +855,13 @@ kbd {
   box-shadow: 2px 2px 0 var(--ink);
 }
 
+#next-button:disabled {
+  cursor: wait;
+  filter: grayscale(.65);
+  opacity: .55;
+  pointer-events: none;
+}
+
 /* Game-wide motion system ---------------------------------------------- */
 .screen-enter { animation: screenEnter .28s ease-out both; }
 @keyframes screenEnter {

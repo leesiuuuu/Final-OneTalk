@@ -70,6 +70,8 @@ let roundStartedAt = 0;
 let lastCountdownSecond = null;
 let roundSequence = 0;
 let scoreAnimationId = 0;
+let feedbackUnlockTimer = 0;
+let feedbackReady = false;
 let gameMode = 'single';
 let multiplayerStartTimer = 0;
 let customRules = null;
@@ -280,6 +282,8 @@ function beginGame() {
 
 async function beginRound() {
   const sequence = ++roundSequence;
+  window.clearTimeout(feedbackUnlockTimer);
+  feedbackReady = false;
   const [question, answer] = currentPair();
   committed = [];
   combo = 0;
@@ -431,15 +435,26 @@ function finishRound(timedOut = false) {
   $('#max-combo-score').textContent = maxCombo;
   $('#speed-score').textContent = `+${score.speed.toFixed(1)}`;
   $('#next-button').innerHTML = round === 9 ? '최종 결과 보기 <span>→</span>' : '다음 질문 <span>→</span>';
+  $('#next-button').disabled = true;
+  feedbackReady = false;
+  window.clearTimeout(feedbackUnlockTimer);
 
   window.setTimeout(() => {
     $('#feedback-overlay').classList.remove('hidden');
     animateQuestionScore(score.totalScore);
+    feedbackUnlockTimer = window.setTimeout(() => {
+      if (!roundClosed || $('#feedback-overlay').classList.contains('hidden')) return;
+      feedbackReady = true;
+      $('#next-button').disabled = false;
+    }, 850);
   }, 650);
   if (timedOut) flash('답변 시간이 종료되었습니다');
 }
 
 function nextRound() {
+  if (!feedbackReady) return;
+  feedbackReady = false;
+  $('#next-button').disabled = true;
   if (round >= 9) return showResults();
   round += 1;
   beginRound();
@@ -582,7 +597,7 @@ document.addEventListener('keydown', event => {
   if (event.key !== 'Enter' || event.repeat || event.isComposing) return;
   const resultIsVisible = !$('#feedback-overlay').classList.contains('hidden');
   const gameIsVisible = !screens.game.classList.contains('hidden');
-  if (gameIsVisible && roundClosed && resultIsVisible) {
+  if (gameIsVisible && roundClosed && resultIsVisible && feedbackReady) {
     event.preventDefault();
     nextRound();
   }
