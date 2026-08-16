@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#10141f">
+  <title>최종 한마디 — 면접 타자 게임</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css">
+  <link rel="stylesheet" href="./styles.css?v=16">
+</head>
+<body>
+  <main id="app">
+    <section id="start-screen" class="screen start-screen">
+      <div class="hero-copy">
+        <p class="eyebrow">1 : 5 INTERVIEW SIMULATION</p>
+        <h1>최종<br><span>한마디</span></h1>
+        <p class="dedication">“모든 취준생에게 이 게임을 바칩니다.”</p>
+        <p class="intro">답변은 한 번뿐입니다. 스페이스를 누르면 어절이 확정되고, 되돌릴 수 없습니다.</p>
+      </div>
+
+      <div class="difficulty-card">
+        <div class="mode-tabs" role="tablist" aria-label="플레이 모드">
+          <button class="mode-tab selected" data-mode="single" role="tab" aria-selected="true">싱글 플레이</button>
+          <button class="mode-tab" data-mode="multi" role="tab" aria-selected="false">멀티 레이스</button>
+        </div>
+        <div class="card-heading">
+          <span>지원할 회사를 선택하세요</span>
+          <span class="live-dot">ONLINE</span>
+        </div>
+        <div class="difficulty-list" role="radiogroup" aria-label="난이도 선택">
+          <button class="difficulty-option selected" data-difficulty="startup" role="radio" aria-checked="true">
+            <span class="option-index">01</span>
+            <span><strong>스타트업</strong><small>입문 · 5~8어절 · 여유 있는 답변</small></span>
+            <span class="option-time">2.5<small>초/어절</small></span>
+          </button>
+          <button class="difficulty-option" data-difficulty="sme" role="radio" aria-checked="false">
+            <span class="option-index">02</span>
+            <span><strong>중소기업</strong><small>보통 · 8~12어절 · 현실적인 압박</small></span>
+            <span class="option-time">2.0<small>초/어절</small></span>
+          </button>
+          <button class="difficulty-option" data-difficulty="enterprise" role="radio" aria-checked="false">
+            <span class="option-index">03</span>
+            <span><strong>대기업</strong><small>고난도 · 12~16어절 · 숨 막히는 면접</small></span>
+            <span class="option-time">1.5<small>초/어절</small></span>
+          </button>
+        </div>
+        <div id="multiplayer-controls" class="multiplayer-controls hidden">
+          <label>닉네임<input id="nickname-input" maxlength="12" placeholder="지원자" autocomplete="nickname"></label>
+          <div class="room-code-row">
+            <input id="room-code-input" maxlength="5" placeholder="초대 코드" aria-label="초대 코드">
+            <button id="join-room-button" class="secondary-button">참가</button>
+          </div>
+          <button id="create-room-button" class="secondary-button wide">친구 방 만들기</button>
+        </div>
+        <button id="start-button" class="primary-button">면접실 입장 <span>→</span></button>
+        <p class="key-hint"><kbd>SPACE</kbd> 어절 확정 · <kbd>ENTER</kbd> 답변 제출</p>
+      </div>
+    </section>
+
+    <section id="lobby-screen" class="screen lobby-screen hidden" aria-live="polite">
+      <div class="lobby-card">
+        <p class="eyebrow">MULTIPLAYER WAITING ROOM</p>
+        <h2 id="lobby-title">상대 지원자를 찾는 중</h2>
+        <div class="room-ticket">
+          <span>ROOM CODE</span><strong id="lobby-room-code">-----</strong>
+          <button id="copy-room-code" class="text-button hidden">코드 복사</button>
+        </div>
+        <div id="room-rules" class="room-rules hidden">
+          <div class="room-rules-heading"><strong>ROOM RULES</strong><span id="room-rules-owner">방장 설정</span></div>
+          <label>
+            <span>답변 최대 어절<small>문장이 이 길이를 넘으면 잘립니다</small></span>
+            <input id="room-max-words" type="number" min="5" max="25" step="1" value="8">
+            <b>어절</b>
+          </label>
+          <label>
+            <span>어절당 제한 시간<small>문항 시간 = 실제 어절 × 설정값</small></span>
+            <input id="room-seconds-per-word" type="number" min="1" max="4" step="0.1" value="2.5">
+            <b>초</b>
+          </label>
+          <div class="room-rules-footer">
+            <p>최대 문항 제한 시간 <strong id="room-time-preview">20.0초</strong></p>
+            <button id="save-room-rules" class="secondary-button">규칙 적용</button>
+          </div>
+        </div>
+        <div id="lobby-players" class="lobby-players"></div>
+        <p id="lobby-status" class="lobby-status">매칭 서버에 접속하고 있습니다<span class="waiting-dots">...</span></p>
+        <button id="ready-button" class="primary-button hidden">준비 완료 <span>✓</span></button>
+        <button id="cancel-match-button" class="secondary-button wide">매칭 취소</button>
+      </div>
+    </section>
+
+    <section id="game-screen" class="screen game-screen hidden" aria-live="polite">
+      <header class="game-header">
+        <button id="quit-button" class="text-button" aria-label="처음 화면으로">← 나가기</button>
+        <div class="round-counter"><span id="round-current">01</span><i>/</i><span>10</span></div>
+        <div id="difficulty-badge" class="difficulty-badge">스타트업</div>
+      </header>
+
+      <aside id="opponent-hud" class="opponent-hud hidden"><p>RIVALS</p><div id="opponent-list"></div></aside>
+
+      <div class="interview-room">
+        <div id="danger-countdown" class="danger-countdown" aria-hidden="true"></div>
+        <div class="panel-table" aria-label="면접관 5명">
+          <div class="interviewer" data-index="0"><div class="avatar"><span></span></div><small>인사팀</small></div>
+          <div class="interviewer" data-index="1"><div class="avatar"><span></span></div><small>실무자</small></div>
+          <div class="interviewer chair"><div class="avatar"><span></span></div><small>면접위원장</small></div>
+          <div class="interviewer" data-index="3"><div class="avatar"><span></span></div><small>팀장</small></div>
+          <div class="interviewer" data-index="4"><div class="avatar"><span></span></div><small>임원</small></div>
+        </div>
+
+        <div class="question-wrap">
+          <p class="question-label">QUESTION <span id="question-number">01</span></p>
+          <h2 id="question-text">본인을 한 문장으로 소개해 주세요.</h2>
+        </div>
+
+        <section class="typing-panel">
+          <div class="timer-row">
+            <span>답변 시간</span>
+            <div class="timer-track"><div id="timer-bar" class="timer-bar"></div></div>
+            <strong id="timer-text">00.0</strong>
+          </div>
+
+          <div id="target-sentence" class="target-sentence"></div>
+          <div id="answer-line" class="answer-line" data-placeholder="여기에 답변을 입력하세요">
+            <div id="committed-words" class="committed-words"></div>
+            <input id="word-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="현재 어절 입력">
+            <span class="caret-marker"></span>
+          </div>
+
+          <div class="status-row">
+            <div class="speed-box"><span>SPEED</span><strong id="cpm-count">0</strong><small>CPM</small></div>
+            <div class="combo-box"><span>COMBO</span><strong id="combo-count">0</strong></div>
+            <p id="lock-message">스페이스를 누르면 되돌릴 수 없습니다</p>
+            <button id="submit-button" class="submit-button">답변 제출 <span>↵</span></button>
+          </div>
+        </section>
+      </div>
+
+      <div id="round-countdown-overlay" class="round-countdown-overlay hidden" aria-live="assertive">
+        <p id="countdown-label">면접 시작까지</p>
+        <strong id="round-countdown-value">3</strong>
+        <small>마음을 가다듬으세요</small>
+      </div>
+
+      <div id="feedback-overlay" class="feedback-overlay hidden">
+        <div class="speech-card">
+          <p>나의 답변</p>
+          <blockquote id="spoken-answer"></blockquote>
+        </div>
+        <div class="score-card">
+          <p id="score-kicker">QUESTION 01 결과</p>
+          <strong><span id="question-score">0.0</span><small>점</small></strong>
+          <div class="score-breakdown">
+            <span>정확도 <b id="accuracy-score">0%</b></span>
+            <span>최대 콤보 <b id="max-combo-score">0</b></span>
+            <span>속도 <b id="speed-score">+0.0</b></span>
+          </div>
+          <button id="next-button" class="primary-button">다음 질문 <span>→</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section id="result-screen" class="screen result-screen hidden">
+      <div class="result-stamp" id="result-stamp">최종 합격</div>
+      <p class="eyebrow">INTERVIEW RESULT</p>
+      <h2 id="result-title">축하합니다!</h2>
+      <p id="result-copy">귀하의 답변에서 충분한 가능성을 확인했습니다.</p>
+      <div class="final-score">
+        <span>TOTAL SCORE</span>
+        <strong id="final-score">0.0</strong><small>/ 1100</small>
+      </div>
+      <div class="result-stats">
+        <div><span>평균 정확도</span><strong id="final-accuracy">0%</strong></div>
+        <div><span>최고 콤보</span><strong id="final-combo">0</strong></div>
+        <div><span>완벽 답변</span><strong id="final-perfect">0</strong></div>
+      </div>
+      <div id="round-history" class="round-history"></div>
+      <div id="match-result" class="match-result hidden"></div>
+      <button id="restart-button" class="primary-button">다시 지원하기 <span>↻</span></button>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status"></div>
+  <script type="module" src="./game.mjs?v=17"></script>
+</body>
+</html>
