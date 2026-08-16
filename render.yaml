@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: final-onetalk
+    name: intalk-final-word
     runtime: node
     plan: free
     buildCommand: npm install && npm run build

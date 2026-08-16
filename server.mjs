@@ -373,7 +373,7 @@ export function createAppServer() {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   createAppServer().listen(PORT, '0.0.0.0', () => {
-    console.log(`최종 한마디 서버: http://localhost:${PORT}`);
+    console.log(`Intalk: 최종 한마디 서버: http://localhost:${PORT}`);
     console.log(`멀티플레이 제공자: ${hive.enabled ? `Hive ${hive.mode}` : '로컬 테스트'}`);
   });
 }
