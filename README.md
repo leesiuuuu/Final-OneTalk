@@ -29,6 +29,9 @@ npm start
 - 글자 입력: 현재 어절 편집
 - `Space`: 현재 어절 확정 (이후 수정 불가)
 - `Enter`: 현재 상태로 답변 제출
+- `SND ON/OFF`: BGM과 전체 효과음 음소거 전환
+
+브라우저 자동 재생 정책 때문에 칩튠 BGM은 첫 번째 클릭 이후 시작됩니다. 음소거 상태는 브라우저에 저장됩니다.
 
 ## 멀티플레이
 
@@ -73,6 +76,7 @@ npm test
 
 - Nintendo DS 계열 감성의 픽셀 아트 UI
 - Phaser 4 WebGL/Canvas Scene 기반 면접관, Tween, 파티클, 카메라 연출
+- Web Audio 기반 루프 칩튠 BGM, UI 호버·클릭, 카운트다운, 정답·오답·콤보·제출·타임아웃·매칭·결과 효과음
 - 한국어 IME 안정성을 위한 HTML 입력창과 Phaser의 하이브리드 구성
 - 갈무리11 Regular(400) / Bold(700) 웹폰트 사용
 - 폰트는 [Galmuri 공식 배포본](https://github.com/quiple/galmuri)을 jsDelivr CDN으로 불러옵니다. (SIL Open Font License 1.1)

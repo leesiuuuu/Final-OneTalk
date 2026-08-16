@@ -1,5 +1,6 @@
 import { splitWords, evaluateAnswer, updateCombo } from './scoring.mjs';
 import { interviewStage } from './src/interview-stage.ts';
+import { audioSystem } from './src/audio-system.ts';
 import {
   configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
   leaveMultiplayer, multiplayerRoom, quickMatch, sendProgress, setReady, setRoomSettings,
@@ -67,7 +68,6 @@ let roundClosed = false;
 let history = [];
 let roundStartedAt = 0;
 let lastCountdownSecond = null;
-let audioContext = null;
 let roundSequence = 0;
 let scoreAnimationId = 0;
 let gameMode = 'single';
@@ -81,6 +81,7 @@ function showScreen(name) {
   active.classList.remove('screen-enter');
   void active.offsetWidth;
   active.classList.add('screen-enter');
+  audioSystem.setMood(name === 'game' ? 'game' : name === 'result' ? 'result' : name === 'lobby' ? 'lobby' : 'menu');
 }
 
 function flash(message) {
@@ -161,6 +162,7 @@ function scheduleMultiplayerStart(room) {
   clearTimeout(multiplayerStartTimer);
   selectedDifficulty = room.difficulty;
   customRules = room.settings;
+  audioSystem.matchFound();
   const countdownLength = 2800;
   const delay = Math.max(0, room.startAt - Date.now() - countdownLength);
   multiplayerStartTimer = window.setTimeout(beginGame, delay);
@@ -172,38 +174,6 @@ configureMultiplayer({
   onError: flash,
   onConnection: () => flash('매칭 서버에 다시 연결하는 중입니다'),
 });
-
-function unlockAudio() {
-  try {
-    audioContext ??= new AudioContext();
-    if (audioContext.state === 'suspended') audioContext.resume();
-  } catch {
-    audioContext = null;
-  }
-}
-
-function playTone(frequency, duration = 0.07, delay = 0, volume = 0.025) {
-  if (!audioContext) return;
-  const start = audioContext.currentTime + delay;
-  const oscillator = audioContext.createOscillator();
-  const gain = audioContext.createGain();
-  oscillator.type = 'square';
-  oscillator.frequency.setValueAtTime(frequency, start);
-  gain.gain.setValueAtTime(volume, start);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  oscillator.connect(gain).connect(audioContext.destination);
-  oscillator.start(start);
-  oscillator.stop(start + duration);
-}
-
-function playWordSound(correct) {
-  if (correct) {
-    playTone(660, 0.07, 0, 0.022);
-    playTone(880, 0.09, 0.06, 0.018);
-  } else {
-    playTone(145, 0.14, 0, 0.03);
-  }
-}
 
 function renderTargetGuide() {
   const targets = splitWords(currentPair()[1]);
@@ -286,19 +256,18 @@ async function runRoundCountdown(sequence) {
   for (const value of ['3', '2', '1']) {
     if (sequence !== roundSequence) return false;
     showRoundCountdown(value);
-    playTone(value === '1' ? 330 : 240, 0.09, 0, 0.025);
+    audioSystem.countdown(value === '1');
     await wait(750);
   }
   if (sequence !== roundSequence) return false;
   showRoundCountdown('START!', '답변을 시작하세요');
-  playTone(660, 0.08, 0, 0.025);
-  playTone(880, 0.12, 0.07, 0.02);
+  audioSystem.start();
   await wait(550);
   return sequence === roundSequence;
 }
 
 function beginGame() {
-  unlockAudio();
+  audioSystem.unlock();
   if (gameMode === 'single') customRules = null;
   round = 0;
   history = [];
@@ -373,13 +342,14 @@ function updateTimer() {
   if (danger !== phaserDangerActive) {
     phaserDangerActive = danger;
     interviewStage.setDanger(danger);
+    audioSystem.setMood(danger ? 'danger' : 'game');
   }
   $('#lock-message').textContent = danger ? '면접관들이 답변을 기다리고 있습니다!' : '스페이스를 누르면 되돌릴 수 없습니다';
   const countdown = remaining <= 3 && remaining > 0 ? Math.ceil(remaining) : null;
   $('#danger-countdown').textContent = countdown ?? '';
   if (countdown && countdown !== lastCountdownSecond) {
     lastCountdownSecond = countdown;
-    playTone(countdown === 1 ? 330 : 220, 0.09, 0, 0.025);
+    audioSystem.countdown(countdown === 1);
   }
 }
 
@@ -406,7 +376,8 @@ function commitWord(rawWord) {
 
   interviewStage.react(Math.min(committed.length - 1, 4), correctWord);
   if (!correctWord) retriggerClass($('.typing-panel'), 'wrong-hit');
-  playWordSound(correctWord);
+  if (correctWord) audioSystem.correct(combo);
+  else audioSystem.wrong();
   renderTargetGuide();
   updateSpeed();
   syncProgress();
@@ -446,6 +417,8 @@ function finishRound(timedOut = false) {
   input.blur();
 
   const score = evaluateAnswer(committed, currentPair()[1], maxCombo, timedOut ? 0 : remaining, duration);
+  if (timedOut) audioSystem.timeout();
+  else audioSystem.submit();
   history.push({ ...score, maxCombo, answer: committed.join(' ') });
   if (gameMode === 'multi') sendProgress({ round: round + 1, progress: (round + 1) / 10, score: totalScore() });
   const good = score.accuracy >= CONFIG[selectedDifficulty].pass;
@@ -486,6 +459,7 @@ function showResults() {
   } else if (average >= 0.75) {
     grade = '추가 면접'; title = '한 번 더 만나고 싶습니다.'; copy = '조금만 더 다듬으면 완벽한 답변이 될 것 같습니다.';
   }
+  audioSystem.result(average >= 0.75);
   $('#result-stamp').textContent = grade;
   $('#result-stamp').dataset.grade = grade;
   $('#result-title').textContent = title;
@@ -524,7 +498,7 @@ function nickname() {
 }
 
 async function enterMultiplayer(action) {
-  unlockAudio();
+  audioSystem.unlock();
   showScreen('lobby');
   renderLobby(null);
   $('#lobby-title').textContent = '상대 지원자를 찾는 중';
@@ -616,3 +590,27 @@ document.addEventListener('keydown', event => {
 $('#game-screen').addEventListener('click', event => {
   if (!roundClosed && !event.target.closest('button')) $('#word-input').focus();
 });
+
+function renderAudioToggle() {
+  const button = $('#audio-toggle');
+  const muted = audioSystem.isMuted();
+  button.textContent = muted ? 'SND OFF' : 'SND ON';
+  button.classList.toggle('muted', muted);
+  button.setAttribute('aria-pressed', String(muted));
+  button.setAttribute('aria-label', muted ? '사운드 켜기' : '사운드 끄기');
+}
+
+document.addEventListener('pointerover', event => {
+  const button = event.target.closest?.('button:not(:disabled)');
+  if (!button || button.contains(event.relatedTarget)) return;
+  audioSystem.uiHover();
+});
+document.addEventListener('click', event => {
+  audioSystem.unlock();
+  if (event.target.closest?.('button:not(:disabled)')) audioSystem.uiClick();
+}, true);
+$('#audio-toggle').addEventListener('click', () => {
+  audioSystem.toggleMute();
+  renderAudioToggle();
+});
+renderAudioToggle();
