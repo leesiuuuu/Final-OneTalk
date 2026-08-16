@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +11,9 @@ import {
   verifyHiveSignature,
 } from './hive-server.mjs';
 
-const ROOT = fileURLToPath(new URL('.', import.meta.url));
+const SOURCE_ROOT = fileURLToPath(new URL('.', import.meta.url));
+const DIST_ROOT = join(SOURCE_ROOT, 'dist');
+const ROOT = existsSync(join(DIST_ROOT, 'index.html')) ? DIST_ROOT : SOURCE_ROOT;
 const PORT = Number(process.env.PORT || 8080);
 const hive = hiveConfig();
 const rooms = new Map();

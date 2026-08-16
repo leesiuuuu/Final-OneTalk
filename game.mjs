@@ -1,4 +1,5 @@
 import { splitWords, evaluateAnswer, updateCombo } from './scoring.mjs';
+import { interviewStage } from './src/interview-stage.ts';
 import {
   configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
   leaveMultiplayer, multiplayerRoom, quickMatch, sendProgress, setReady, setRoomSettings,
@@ -72,6 +73,7 @@ let scoreAnimationId = 0;
 let gameMode = 'single';
 let multiplayerStartTimer = 0;
 let customRules = null;
+let phaserDangerActive = false;
 
 function showScreen(name) {
   Object.entries(screens).forEach(([key, element]) => element.classList.toggle('hidden', key !== name));
@@ -332,7 +334,9 @@ async function beginRound() {
   renderTargetGuide();
   $('#feedback-overlay').classList.add('hidden');
   retriggerClass($('.interview-room'), 'round-enter');
-  $$('.interviewer').forEach(person => person.classList.remove('positive', 'negative'));
+  interviewStage.setDanger(false);
+  phaserDangerActive = false;
+  interviewStage.roundEnter();
   updateTimer();
   cancelAnimationFrame(timerId);
   const ready = await runRoundCountdown(sequence);
@@ -366,6 +370,10 @@ function updateTimer() {
   $('#timer-text').textContent = remaining.toFixed(1).padStart(4, '0');
   const danger = ratio < 0.25 && !roundClosed;
   $('#game-screen').classList.toggle('danger-mode', danger);
+  if (danger !== phaserDangerActive) {
+    phaserDangerActive = danger;
+    interviewStage.setDanger(danger);
+  }
   $('#lock-message').textContent = danger ? '면접관들이 답변을 기다리고 있습니다!' : '스페이스를 누르면 되돌릴 수 없습니다';
   const countdown = remaining <= 3 && remaining > 0 ? Math.ceil(remaining) : null;
   $('#danger-countdown').textContent = countdown ?? '';
@@ -396,9 +404,7 @@ function commitWord(rawWord) {
   $('#combo-count').parentElement.classList.toggle('hot', combo >= 5);
   if (combo >= 5) retriggerClass($('#combo-count').parentElement, 'combo-punch');
 
-  const interviewer = $$('.interviewer')[Math.min(committed.length - 1, 4)];
-  interviewer?.classList.add(correctWord ? 'positive' : 'negative');
-  window.setTimeout(() => interviewer?.classList.remove('positive', 'negative'), 600);
+  interviewStage.react(Math.min(committed.length - 1, 4), correctWord);
   if (!correctWord) retriggerClass($('.typing-panel'), 'wrong-hit');
   playWordSound(correctWord);
   renderTargetGuide();
@@ -433,6 +439,8 @@ function finishRound(timedOut = false) {
   }
   roundClosed = true;
   $('#game-screen').classList.remove('danger-mode');
+  interviewStage.setDanger(false);
+  phaserDangerActive = false;
   $('#danger-countdown').textContent = '';
   cancelAnimationFrame(timerId);
   input.blur();
@@ -441,7 +449,7 @@ function finishRound(timedOut = false) {
   history.push({ ...score, maxCombo, answer: committed.join(' ') });
   if (gameMode === 'multi') sendProgress({ round: round + 1, progress: (round + 1) / 10, score: totalScore() });
   const good = score.accuracy >= CONFIG[selectedDifficulty].pass;
-  $$('.interviewer').forEach(person => person.classList.add(good ? 'positive' : 'negative'));
+  interviewStage.reactAll(good);
 
   $('#spoken-answer').textContent = committed.join(' ') || '…';
   $('#score-kicker').textContent = `QUESTION ${String(round + 1).padStart(2, '0')} 결과`;

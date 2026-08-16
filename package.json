@@ -9,6 +9,16 @@
   "scripts": {
     "start": "node server.mjs",
     "start:hive": "node --env-file=.env server.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "test": "node all-tests.mjs"
+  },
+  "dependencies": {
+    "phaser": "^4.2.1"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1"
   }
 }

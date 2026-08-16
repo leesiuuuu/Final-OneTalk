@@ -3,7 +3,7 @@ services:
     name: final-onetalk
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeployTrigger: commit

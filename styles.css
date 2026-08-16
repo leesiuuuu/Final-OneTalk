@@ -104,6 +104,8 @@ kbd { padding: 2px 6px; border: 1px solid #c4c0b7; border-radius: 3px; backgroun
 .difficulty-badge { justify-self: end; padding: 7px 11px; border: 1px solid var(--ink); font-size: 11px; font-weight: 700; }
 .interview-room { max-width: 1150px; margin: auto; padding: 0 30px 30px; }
 .panel-table { display: flex; justify-content: center; align-items: end; gap: clamp(18px, 4vw, 62px); height: 178px; border-bottom: 10px solid #202530; }
+.phaser-stage { width: 100%; height: 180px; overflow: hidden; image-rendering: pixelated; }
+.phaser-stage canvas { display: block; width: 100% !important; height: 100% !important; object-fit: contain; image-rendering: pixelated; }
 .interviewer { width: 100px; text-align: center; transition: .2s; }
 .interviewer small { display: inline-block; margin-top: 6px; padding: 2px 5px; background: #202530; color: #c4c6cb; font-size: 9px; }
 .avatar { position: relative; width: 58px; height: 72px; margin: auto; border-radius: 40px 40px 8px 8px; background: #697080; transition: .2s; }
@@ -263,6 +265,7 @@ kbd { padding: 2px 6px; border: 1px solid #c4c0b7; border-radius: 3px; backgroun
   .hero-copy h1 { font-size: 70px; }
   .difficulty-card { width: calc(100% - 40px); margin: 35px auto; }
   .panel-table { height: 128px; gap: 10px; }
+  .phaser-stage { height: 132px; }
   .interviewer { width: 55px; }
   .avatar { width: 40px; height: 52px; }
   .avatar::before { left: 5px; width: 30px; height: 33px; }
@@ -535,6 +538,7 @@ kbd {
   border-bottom: 12px solid var(--ink);
   box-shadow: 0 6px 0 #5b376e;
 }
+.phaser-stage { filter: drop-shadow(0 6px 0 #5b376e); }
 
 .interviewer { image-rendering: pixelated; }
 .interviewer small {

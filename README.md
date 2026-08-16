@@ -1,16 +1,20 @@
 # 최종 한마디
 
-면접 답변을 어절 단위로 잠그며 입력하는 1 대 5 타이핑 게임입니다. 싱글 플레이와 최대 4인의 실시간 멀티 레이스를 지원합니다.
+면접 답변을 어절 단위로 잠그며 입력하는 Phaser 4 기반 1 대 5 타이핑 게임입니다. 싱글 플레이와 최대 4인의 실시간 멀티 레이스를 지원합니다.
 
 ## 실행
 
-Node.js 20 이상에서 게임 서버를 실행하세요.
+Node.js 20 이상에서 의존성을 설치하고 Phaser 프로덕션 번들을 만든 뒤 게임 서버를 실행하세요.
 
 ```powershell
+npm install
+npm run build
 npm start
 ```
 
 그다음 `http://localhost:8080`을 엽니다.
+
+개발 중에는 첫 번째 터미널에서 `npm start`, 두 번째 터미널에서 `npm run dev`를 실행하고 `http://localhost:5173`을 사용하면 Vite가 API 요청을 Node 서버로 전달합니다.
 
 ## Railway 배포
 
@@ -68,5 +72,7 @@ npm test
 ## 디자인
 
 - Nintendo DS 계열 감성의 픽셀 아트 UI
+- Phaser 4 WebGL/Canvas Scene 기반 면접관, Tween, 파티클, 카메라 연출
+- 한국어 IME 안정성을 위한 HTML 입력창과 Phaser의 하이브리드 구성
 - 갈무리11 Regular(400) / Bold(700) 웹폰트 사용
 - 폰트는 [Galmuri 공식 배포본](https://github.com/quiple/galmuri)을 jsDelivr CDN으로 불러옵니다. (SIL Open Font License 1.1)
