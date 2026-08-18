@@ -2,8 +2,9 @@ import { splitWords, evaluateAnswer, updateCombo } from './scoring.mjs';
 import { interviewStage } from './src/interview-stage.ts';
 import { audioSystem } from './src/audio-system.ts';
 import {
-  configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
-  leaveMultiplayer, multiplayerRoom, quickMatch, sendProgress, setReady, setRoomSettings, signalMultiplayerExit,
+  attackPlayer, configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
+  leaveMultiplayer, multiplayerRoom, quickMatch, sendLobbyChat, sendProgress, setReady,
+  setRoomSettings, signalMultiplayerExit, startPrivateRoom,
 } from './multiplayer.mjs';
 
 const CONFIG = {
@@ -77,7 +78,10 @@ let feedbackReady = false;
 let gameMode = 'single';
 let multiplayerStartTimer = 0;
 let customRules = null;
+let customQuestions = null;
 let phaserDangerActive = false;
+let lastAttackId = 0;
+let aiQuestionsAvailable = false;
 const leftPlayerIds = new Set();
 
 function showScreen(name) {
@@ -97,10 +101,13 @@ function flash(message) {
 }
 
 function currentPair() {
-  const [question, answer] = QUESTIONS[selectedDifficulty][round];
+  const source = customQuestions?.length ? customQuestions : QUESTIONS[selectedDifficulty];
+  const [question, answer] = source[round % source.length];
   if (!customRules) return [question, answer];
   return [question, splitWords(answer).slice(0, customRules.maxWords).join(' ')];
 }
+
+function roundCount() { return gameMode === 'multi' ? (customRules?.roundCount ?? 10) : 10; }
 
 function totalScore() { return history.reduce((sum, item) => sum + item.totalScore, 0); }
 
@@ -108,39 +115,55 @@ function syncProgress(forceRound = round) {
   if (gameMode !== 'multi' || !multiplayerRoom()) return;
   const wordCount = splitWords(currentPair()[1]).length;
   const partial = Math.min(1, (committed.length + ($('#word-input').value.trim() ? 0.4 : 0)) / wordCount);
-  sendProgress({ round: forceRound + 1, progress: Math.min(1, (forceRound + partial) / 10), score: totalScore() });
+  sendProgress({ round: forceRound + 1, progress: Math.min(1, (forceRound + partial) / roundCount()), score: totalScore() });
 }
 
 function renderLobby(room) {
   $('#lobby-room-code').textContent = room?.code ?? '-----';
   $('#copy-room-code').classList.toggle('hidden', !room?.code);
-  $('#room-rules').classList.toggle('hidden', !room || room.kind !== 'private');
   const players = room?.players ?? [];
+  const me = players.find(player => player.isMe);
+  $('#room-rules').classList.toggle('hidden', !room || room.kind !== 'private' || !me?.isHost);
   $('#lobby-players').innerHTML = Array.from({ length: 4 }, (_, index) => {
     const player = players[index];
     if (!player) return `<div class="lobby-player waiting"><span>SLOT ${index + 1}</span><strong>대기 중</strong></div>`;
-    return `<div class="lobby-player ${player.ready ? 'ready' : ''}"><span>${player.isMe ? 'YOU' : `PLAYER ${index + 1}`}</span><strong>${player.nickname}</strong><small>${player.ready ? ' READY' : ''}</small></div>`;
+    const chat = [...(room?.messages ?? [])].reverse().find(item => item.playerId === player.playerId);
+    const freshChat = chat && Date.now() - chat.at < 15000 ? `<em class="player-chat-bubble">${chat.message}</em>` : '';
+    return `<div class="lobby-player ${player.ready ? 'ready' : ''}">${freshChat}<span>${player.isMe ? 'YOU' : player.isHost ? 'HOST' : `PLAYER ${index + 1}`}</span><strong>${player.nickname}</strong><small>${player.isHost ? ' 방장' : player.ready ? ' READY' : ' 준비 전'}</small></div>`;
   }).join('');
   if (!room) return;
   selectedDifficulty = room.difficulty;
-  customRules = room.settings;
-  const me = players.find(player => player.isMe);
+  customRules = { ...room.settings };
+  customQuestions = room.questions ?? null;
   const isStarting = room.status === 'starting';
-  const canConfigure = room.kind === 'private' && !isStarting;
+  const isGenerating = room.status === 'generating';
+  const canConfigure = room.kind === 'private' && room.status === 'waiting';
   $('#room-max-words').value = room.settings.maxWords;
   $('#room-seconds-per-word').value = room.settings.secondsPerWord;
+  $('#room-round-count').value = room.settings.roundCount;
+  $('#room-use-ai').checked = Boolean(room.settings.useAI);
   $('#room-max-words').disabled = !me?.isHost || !canConfigure;
   $('#room-seconds-per-word').disabled = !me?.isHost || !canConfigure;
+  $('#room-round-count').disabled = !me?.isHost || !canConfigure;
+  $('#room-use-ai').disabled = !me?.isHost || !canConfigure || !aiQuestionsAvailable;
   $('#save-room-rules').disabled = !me?.isHost || !canConfigure;
   $('#room-time-preview').textContent = `${(room.settings.maxWords * room.settings.secondsPerWord).toFixed(1)}초`;
-  $('#room-rules-owner').textContent = me?.isHost
-    ? (canConfigure ? '방장 설정 · 변경 시 준비 해제' : '게임 규칙 잠김')
-    : '방장만 변경 가능';
-  $('#ready-button').classList.toggle('hidden', room.provider !== 'local' || isStarting);
-  $('#ready-button').disabled = Boolean(me?.ready);
-  $('#ready-button').innerHTML = me?.ready ? '다른 지원자 준비 중…' : '준비 완료 <span>✓</span>';
-  $('#lobby-title').textContent = isStarting ? `${players.length}인 면접 레이스 확정` : '지원자 대기실';
-  $('#lobby-status').innerHTML = isStarting ? '곧 동시에 면접이 시작됩니다' : `현재 ${players.length}/4명 · 2명 이상 모두 준비하면 시작합니다<span class="waiting-dots">...</span>`;
+  $('#room-rules-owner').textContent = canConfigure ? '방장 전용 · 변경 시 게스트 준비 해제' : '게임 규칙 잠김';
+  const guestPlayers = players.filter(player => !player.isHost);
+  const guestsReady = guestPlayers.length > 0 && guestPlayers.every(player => player.ready);
+  $('#ready-button').classList.toggle('hidden', room.provider !== 'local' || isStarting || isGenerating || Boolean(me?.isHost));
+  $('#ready-button').disabled = false;
+  $('#ready-button').innerHTML = me?.ready ? '준비 취소 <span>↩</span>' : '준비 완료 <span>✓</span>';
+  $('#host-start-button').classList.toggle('hidden', room.kind !== 'private' || !me?.isHost || isStarting || isGenerating);
+  $('#host-start-button').disabled = players.length < 2 || !guestsReady;
+  $('#matching-loader').classList.toggle('loading', !isStarting);
+  $('#lobby-chat-form').classList.toggle('hidden', isStarting);
+  $('#lobby-title').textContent = isGenerating ? 'AI 면접 문장 생성 중' : isStarting ? `${players.length}인 면접 레이스 확정` : '지원자 대기실';
+  $('#lobby-status').innerHTML = isGenerating
+    ? '무료 AI가 질문과 답변을 만들고 있습니다<span class="waiting-dots">...</span>'
+    : isStarting ? (room.aiFallback ? 'AI 생성이 지연되어 기본 면접 문장으로 시작합니다' : '곧 동시에 면접이 시작됩니다') : me?.isHost
+      ? (guestsReady ? '모든 게스트 준비 완료 · 시작 버튼을 눌러 주세요' : `현재 ${players.length}/4명 · 게스트의 준비를 기다리는 중<span class="waiting-dots">...</span>`)
+      : (me?.ready ? '준비 완료 · 방장의 시작을 기다리는 중' : '준비 버튼을 누르면 방장이 게임을 시작할 수 있습니다');
 }
 
 function renderMultiplayerRoom(room) {
@@ -150,13 +173,34 @@ function renderMultiplayerRoom(room) {
     leftPlayerIds.add(player.playerId);
   });
   const rivals = room.players.filter(player => !player.isMe);
+  const me = room.players.find(player => player.isMe);
   $('#opponent-hud').classList.toggle('hidden', gameMode !== 'multi' || rivals.length === 0);
   $('#opponent-list').innerHTML = rivals.map(player => `
     <div class="opponent-row ${player.left ? 'left' : ''}">
-      <div><strong>${player.nickname}</strong><small>${player.left ? '나감' : `Q${Math.max(1, player.round)}/10`}</small><b>${Math.round(player.score)}점</b></div>
+      <div><strong>${player.nickname}</strong><small>${player.left ? '나감' : `Q${Math.max(1, player.round)}/${roundCount()}`}</small><b>${Math.round(player.score)}점</b></div>
       <div class="opponent-track"><i style="width:${player.progress * 100}%"></i></div>
+      ${player.left || player.finished ? '' : `<button class="attack-button" data-target-id="${player.playerId}" ${!me?.attacksLeft ? 'disabled' : ''}>압박 -2초</button>`}
     </div>`).join('');
+  if (room.latestAttack?.id > lastAttackId) {
+    lastAttackId = room.latestAttack.id;
+    const attack = room.latestAttack;
+    if (attack.targetId === me?.playerId && Date.now() - attack.at < 5000 && !roundClosed) {
+      endAt -= attack.penaltyMs;
+      document.body.classList.add('under-attack');
+      window.setTimeout(() => document.body.classList.remove('under-attack'), 700);
+      showRaceEvent(`${attack.attackerName}의 압박! 제한 시간 -2초`, 'attack');
+    } else if (attack.attackerId === me?.playerId) {
+      showRaceEvent(`${attack.targetName}에게 압박 성공 · ${me.attacksLeft}장 남음`, 'attack');
+    }
+  }
   if (!screens.result.classList.contains('hidden')) renderMatchResult(room);
+}
+
+function showRaceEvent(message, type = '') {
+  const banner = $('#race-event-banner');
+  banner.textContent = message;
+  banner.className = `race-event-banner ${type}`;
+  window.setTimeout(() => banner.classList.add('hidden'), 2200);
 }
 
 function renderMatchResult(room) {
@@ -170,7 +214,9 @@ function renderMatchResult(room) {
 function scheduleMultiplayerStart(room) {
   clearTimeout(multiplayerStartTimer);
   selectedDifficulty = room.difficulty;
-  customRules = room.settings;
+  customRules = { ...room.settings };
+  customQuestions = room.questions ?? null;
+  lastAttackId = room.latestAttack?.id ?? 0;
   audioSystem.matchFound();
   const countdownLength = 2800;
   const delay = Math.max(0, room.startAt - Date.now() - countdownLength);
@@ -182,6 +228,11 @@ configureMultiplayer({
   onMatchStart: scheduleMultiplayerStart,
   onError: flash,
   onConnection: () => flash('매칭 서버에 다시 연결하는 중입니다'),
+  onDestroyed: reason => {
+    clearTimeout(multiplayerStartTimer);
+    showScreen('start');
+    flash(reason);
+  },
 });
 
 function renderTargetGuide() {
@@ -277,9 +328,10 @@ async function runRoundCountdown(sequence) {
 
 function beginGame() {
   audioSystem.unlock();
-  if (gameMode === 'single') customRules = null;
+  if (gameMode === 'single') { customRules = null; customQuestions = null; }
   round = 0;
   history = [];
+  $('#round-total').textContent = roundCount();
   showScreen('game');
   $('#difficulty-badge').textContent = CONFIG[selectedDifficulty].label;
   $('#opponent-hud').classList.toggle('hidden', gameMode !== 'multi');
@@ -299,6 +351,11 @@ async function beginRound() {
   maxCombo = 0;
   roundClosed = true;
   duration = splitWords(answer).length * (customRules?.secondsPerWord ?? CONFIG[selectedDifficulty].seconds);
+  if (gameMode === 'multi' && [2, 8].includes(round)) duration *= round === 8 ? 0.8 : 0.85;
+  if (gameMode === 'multi' && round === 5) {
+    combo = 3;
+    maxCombo = 3;
+  }
   remaining = duration;
   lastCountdownSecond = null;
 
@@ -309,7 +366,7 @@ async function beginRound() {
   $('#word-input').value = '';
   $('#word-input').disabled = true;
   $('#submit-button').disabled = true;
-  $('#combo-count').textContent = '0';
+  $('#combo-count').textContent = combo;
   $('#cpm-count').textContent = '0';
   $('#danger-countdown').textContent = '';
   $('#game-screen').classList.remove('danger-mode');
@@ -330,6 +387,9 @@ async function beginRound() {
   $('#submit-button').disabled = false;
   endAt = performance.now() + duration * 1000;
   roundStartedAt = performance.now();
+  if (gameMode === 'multi' && round === 2) showRaceEvent('돌발 질문 · 이번 라운드 제한 시간 -15%', 'event');
+  if (gameMode === 'multi' && round === 5) showRaceEvent('집중 면접 · 콤보 3부터 시작', 'event');
+  if (gameMode === 'multi' && round === 8) showRaceEvent('최종 압박 · 이번 라운드 제한 시간 -20%', 'event');
   $('#word-input').focus();
   timerId = requestAnimationFrame(tick);
 }
@@ -434,7 +494,7 @@ function finishRound(timedOut = false) {
   if (timedOut) audioSystem.timeout();
   else audioSystem.submit();
   history.push({ ...score, maxCombo, answer: committed.join(' ') });
-  if (gameMode === 'multi') sendProgress({ round: round + 1, progress: (round + 1) / 10, score: totalScore() });
+  if (gameMode === 'multi') sendProgress({ round: round + 1, progress: (round + 1) / roundCount(), score: totalScore() });
   const good = score.accuracy >= CONFIG[selectedDifficulty].pass;
   interviewStage.reactAll(good);
 
@@ -444,7 +504,7 @@ function finishRound(timedOut = false) {
   $('#accuracy-score').textContent = `${Math.round(score.accuracy * 100)}%`;
   $('#max-combo-score').textContent = maxCombo;
   $('#speed-score').textContent = `+${score.speed.toFixed(1)}`;
-  $('#next-button').innerHTML = round === 9 ? '최종 결과 보기 <span>→</span>' : '다음 질문 <span>→</span>';
+  $('#next-button').innerHTML = round === roundCount() - 1 ? '최종 결과 보기 <span>→</span>' : '다음 질문 <span>→</span>';
   $('#auto-next-hint').textContent = '결과 표시 중…';
   $('#next-button').disabled = true;
   feedbackReady = false;
@@ -465,9 +525,9 @@ function finishRound(timedOut = false) {
 
 function startFeedbackAutoAdvance() {
   let seconds = 4;
-  const label = round === 9 ? '최종 결과' : '다음 질문';
+  const label = round === roundCount() - 1 ? '최종 결과' : '다음 질문';
   const render = () => {
-    $('#auto-next-hint').textContent = `${seconds}초 후 ${label}${round === 9 ? '로' : '으로'} 자동 진행`;
+    $('#auto-next-hint').textContent = `${seconds}초 후 ${label}${round === roundCount() - 1 ? '로' : '으로'} 자동 진행`;
     $('#next-button').innerHTML = `${label} · ${seconds} <span>→</span>`;
   };
   render();
@@ -484,7 +544,7 @@ function nextRound() {
   window.clearInterval(feedbackCountdownTimer);
   feedbackReady = false;
   $('#next-button').disabled = true;
-  if (round >= 9) return showResults();
+  if (round >= roundCount() - 1) return showResults();
   round += 1;
   beginRound();
 }
@@ -519,7 +579,7 @@ function showResults() {
   if (gameMode === 'multi') {
     const room = multiplayerRoom();
     if (room) renderMatchResult(room);
-    finishMatch({ round: 10, progress: 1, score: total }).then(updated => updated && renderMultiplayerRoom(updated)).catch(error => flash(error.message));
+    finishMatch({ round: roundCount(), progress: 1, score: total }).then(updated => updated && renderMultiplayerRoom(updated)).catch(error => flash(error.message));
   }
 }
 
@@ -548,6 +608,7 @@ async function enterMultiplayer(action) {
   showScreen('lobby');
   renderLobby(null);
   $('#lobby-title').textContent = '상대 지원자를 찾는 중';
+  $('#matching-loader').classList.add('loading');
   $('#ready-button').classList.add('hidden');
   try {
     const room = await action();
@@ -577,8 +638,10 @@ $('#start-button').addEventListener('click', () => {
 function multiplayerSetup() {
   const maxWords = Number($('#setup-max-words').value);
   const secondsPerWord = Number($('#setup-seconds-per-word').value);
+  const roundCount = Number($('#setup-round-count').value);
+  const useAI = $('#setup-use-ai').checked;
   const difficulty = maxWords <= 8 ? 'startup' : maxWords <= 12 ? 'sme' : 'enterprise';
-  return { difficulty, settings: { maxWords, secondsPerWord } };
+  return { difficulty, settings: { maxWords, secondsPerWord, roundCount, useAI } };
 }
 function previewMultiplayerSetup() {
   const { settings } = multiplayerSetup();
@@ -587,6 +650,7 @@ function previewMultiplayerSetup() {
 }
 $('#setup-max-words').addEventListener('input', previewMultiplayerSetup);
 $('#setup-seconds-per-word').addEventListener('input', previewMultiplayerSetup);
+$('#setup-round-count').addEventListener('input', previewMultiplayerSetup);
 $('#create-room-button').addEventListener('click', () => {
   const setup = multiplayerSetup();
   enterMultiplayer(() => createPrivateRoom(nickname(), setup.difficulty, setup.settings));
@@ -596,11 +660,23 @@ $('#join-room-button').addEventListener('click', () => {
   if (!code) return flash('초대 코드를 입력해 주세요');
   enterMultiplayer(() => joinPrivateRoom(code, nickname(), 'sme'));
 });
-$('#ready-button').addEventListener('click', () => setReady(true).catch(error => flash(error.message)));
+$('#ready-button').addEventListener('click', () => {
+  const me = multiplayerRoom()?.players.find(player => player.isMe);
+  setReady(!me?.ready).catch(error => flash(error.message));
+});
+$('#host-start-button').addEventListener('click', () => {
+  $('#host-start-button').disabled = true;
+  startPrivateRoom().catch(error => {
+    flash(error.message);
+    renderLobby(multiplayerRoom());
+  });
+});
 async function saveRoomRules() {
   const maxWords = Number($('#room-max-words').value);
   const secondsPerWord = Number($('#room-seconds-per-word').value);
-  try { await setRoomSettings({ maxWords, secondsPerWord }); }
+  const roundCount = Number($('#room-round-count').value);
+  const useAI = $('#room-use-ai').checked;
+  try { await setRoomSettings({ maxWords, secondsPerWord, roundCount, useAI }); }
   catch (error) { flash(error.message); renderLobby(multiplayerRoom()); }
 }
 function previewRoomRules() {
@@ -610,7 +686,27 @@ function previewRoomRules() {
 }
 $('#room-max-words').addEventListener('input', previewRoomRules);
 $('#room-seconds-per-word').addEventListener('input', previewRoomRules);
+$('#room-round-count').addEventListener('input', previewRoomRules);
+$('#room-use-ai').addEventListener('change', previewRoomRules);
 $('#save-room-rules').addEventListener('click', saveRoomRules);
+$('#lobby-chat-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = $('#lobby-chat-input');
+  const message = input.value.trim();
+  if (!message) return;
+  input.value = '';
+  try { await sendLobbyChat(message); }
+  catch (error) { flash(error.message); }
+});
+$('#opponent-list').addEventListener('click', event => {
+  const button = event.target.closest('.attack-button');
+  if (!button) return;
+  button.disabled = true;
+  attackPlayer(button.dataset.targetId).catch(error => {
+    flash(error.message);
+    button.disabled = false;
+  });
+});
 $('#copy-room-code').addEventListener('click', async () => {
   await navigator.clipboard.writeText(multiplayerRoom()?.code ?? '');
   flash('초대 코드를 복사했습니다');
@@ -717,3 +813,8 @@ document.addEventListener('keydown', event => {
 });
 renderAudioSettings();
 previewMultiplayerSetup();
+fetch('/api/config').then(response => response.json()).then(config => {
+  aiQuestionsAvailable = Boolean(config.aiQuestionsAvailable);
+  $('#setup-use-ai').disabled = !aiQuestionsAvailable;
+  $('#room-ai-hint').textContent = aiQuestionsAvailable ? '무료 AI API로 질문·답변 생성' : 'Railway에 POLLINATIONS_API_KEY 연결 필요';
+}).catch(() => {});

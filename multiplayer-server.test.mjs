@@ -19,7 +19,7 @@ async function post(base, path, body) {
   return { status: response.status, data: await response.json() };
 }
 
-test('개인 방은 최대 4명이 참가하고 전원 준비 후 시작한다', async () => {
+test('개인 방은 최대 4명이 참가하고 게스트 준비 후 방장이 시작한다', async () => {
   await withServer(async base => {
     const owner = await post(base, '/api/rooms', { playerId: 'owner4', nickname: '방장', difficulty: 'startup' });
     assert.equal(owner.status, 201);
@@ -32,13 +32,17 @@ test('개인 방은 최대 4명이 참가하고 전원 준비 후 시작한다',
     const overflow = await post(base, `/api/rooms/${code}/join`, { playerId: 'member5', nickname: '초과', difficulty: 'startup' });
     assert.equal(overflow.status, 400);
 
-    for (const playerId of ['owner4', 'member2', 'member3']) {
+    for (const playerId of ['member2', 'member3']) {
       const ready = await post(base, `/api/rooms/${code}/ready`, { playerId, ready: true });
       assert.equal(ready.data.status, 'waiting');
     }
     const finalReady = await post(base, `/api/rooms/${code}/ready`, { playerId: 'member4', ready: true });
-    assert.equal(finalReady.data.status, 'starting');
-    assert.ok(finalReady.data.startAt > Date.now());
+    assert.equal(finalReady.data.status, 'waiting');
+    const denied = await post(base, `/api/rooms/${code}/start`, { playerId: 'member2' });
+    assert.equal(denied.status, 400);
+    const started = await post(base, `/api/rooms/${code}/start`, { playerId: 'owner4' });
+    assert.equal(started.data.status, 'starting');
+    assert.ok(started.data.startAt > Date.now());
   });
 });
 
@@ -65,8 +69,8 @@ test('친구 방 세부 규칙은 방장만 시작 전에 변경할 수 있다',
     assert.equal(denied.status, 400);
     const changed = await post(base, `/api/rooms/${code}/settings`, { playerId: 'difficulty-owner', maxWords: 14, secondsPerWord: 1.2 });
     assert.equal(changed.status, 200);
-    assert.deepEqual(changed.data.settings, { maxWords: 14, secondsPerWord: 1.2 });
-    assert.ok(changed.data.players.every(player => player.ready === false));
+    assert.deepEqual(changed.data.settings, { maxWords: 14, secondsPerWord: 1.2, roundCount: 10, useAI: false });
+    assert.ok(changed.data.players.filter(player => !player.isHost).every(player => player.ready === false));
 
     const upperBound = await post(base, `/api/rooms/${code}/settings`, { playerId: 'difficulty-owner', maxWords: 25, secondsPerWord: 1 });
     assert.equal(upperBound.status, 200);
@@ -84,7 +88,7 @@ test('친구 방 생성 시 선택한 세부 규칙을 바로 적용한다', asy
       settings: { maxWords: 21, secondsPerWord: 1.7 },
     });
     assert.equal(created.status, 201);
-    assert.deepEqual(created.data.settings, { maxWords: 21, secondsPerWord: 1.7 });
+    assert.deepEqual(created.data.settings, { maxWords: 21, secondsPerWord: 1.7, roundCount: 10, useAI: false });
 
     const invalid = await post(base, '/api/rooms', {
       playerId: 'invalid-owner', nickname: '오류방', difficulty: 'startup',
@@ -99,8 +103,8 @@ test('게임 시작 후 나간 참가자는 이탈 상태로 모든 플레이어
     const owner = await post(base, '/api/rooms', { playerId: 'leave-owner', nickname: '남은사람', difficulty: 'startup' });
     const code = owner.data.code;
     await post(base, `/api/rooms/${code}/join`, { playerId: 'leave-guest', nickname: '나간사람', difficulty: 'startup' });
-    await post(base, `/api/rooms/${code}/ready`, { playerId: 'leave-owner', ready: true });
     await post(base, `/api/rooms/${code}/ready`, { playerId: 'leave-guest', ready: true });
+    await post(base, `/api/rooms/${code}/start`, { playerId: 'leave-owner' });
     await post(base, '/api/match/cancel', { playerId: 'leave-guest' });
 
     const updated = await post(base, `/api/rooms/${code}/progress`, { playerId: 'leave-owner', round: 2, progress: 0.2, score: 50 });
@@ -110,15 +114,51 @@ test('게임 시작 후 나간 참가자는 이탈 상태로 모든 플레이어
   });
 });
 
-test('대기실 방장이 나가면 다음 참가자가 방장을 이어받는다', async () => {
+test('대기실 방장이 나가면 친구 방이 파괴된다', async () => {
   await withServer(async base => {
     const owner = await post(base, '/api/rooms', { playerId: 'host-leave', nickname: '기존방장', difficulty: 'startup' });
     const code = owner.data.code;
     await post(base, `/api/rooms/${code}/join`, { playerId: 'next-host', nickname: '새방장', difficulty: 'startup' });
     await post(base, '/api/match/cancel', { playerId: 'host-leave' });
     const updated = await post(base, `/api/rooms/${code}/ready`, { playerId: 'next-host', ready: true });
-    assert.equal(updated.data.players.length, 1);
-    assert.equal(updated.data.players[0].isHost, true);
+    assert.equal(updated.status, 400);
+    assert.match(updated.data.error, /방을 찾을 수 없습니다/);
+  });
+});
+
+test('라운드 수와 어절 규칙이 모든 참가자에게 동일하게 적용된다', async () => {
+  await withServer(async base => {
+    const owner = await post(base, '/api/rooms', {
+      playerId: 'rule-owner', nickname: '방장', difficulty: 'sme',
+      settings: { maxWords: 25, secondsPerWord: 1.3, roundCount: 6, useAI: false },
+    });
+    const code = owner.data.code;
+    const guest = await post(base, `/api/rooms/${code}/join`, { playerId: 'rule-guest', nickname: '손님', difficulty: 'startup' });
+    assert.deepEqual(guest.data.settings, { maxWords: 25, secondsPerWord: 1.3, roundCount: 6, useAI: false });
+    assert.equal(guest.data.settingsVersion, 1);
+    const changed = await post(base, `/api/rooms/${code}/settings`, {
+      playerId: 'rule-owner', maxWords: 7, secondsPerWord: 3.2, roundCount: 4, useAI: false,
+    });
+    assert.equal(changed.data.settingsVersion, 2);
+    assert.deepEqual(changed.data.settings, { maxWords: 7, secondsPerWord: 3.2, roundCount: 4, useAI: false });
+  });
+});
+
+test('대기실 채팅과 게임 중 압박 카드를 서버가 검증한다', async () => {
+  await withServer(async base => {
+    const owner = await post(base, '/api/rooms', { playerId: 'battle-owner', nickname: '방장', difficulty: 'startup' });
+    const code = owner.data.code;
+    await post(base, `/api/rooms/${code}/join`, { playerId: 'battle-guest', nickname: '상대', difficulty: 'startup' });
+    const chat = await post(base, `/api/rooms/${code}/chat`, { playerId: 'battle-guest', message: '준비됐어요!' });
+    assert.equal(chat.data.messages.at(-1).message, '준비됐어요!');
+    await post(base, `/api/rooms/${code}/ready`, { playerId: 'battle-guest', ready: true });
+    await post(base, `/api/rooms/${code}/start`, { playerId: 'battle-owner' });
+    const attack = await post(base, `/api/rooms/${code}/attack`, { playerId: 'battle-owner', targetId: 'battle-guest' });
+    assert.equal(attack.status, 200);
+    assert.equal(attack.data.latestAttack.penaltyMs, 2000);
+    assert.equal(attack.data.players.find(player => player.isMe).attacksLeft, 1);
+    const cooldown = await post(base, `/api/rooms/${code}/attack`, { playerId: 'battle-owner', targetId: 'battle-guest' });
+    assert.equal(cooldown.status, 400);
   });
 });
 

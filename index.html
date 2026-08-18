@@ -56,6 +56,8 @@
             <legend>친구 방 생성 규칙</legend>
             <label><span>답변 최대 어절</span><input id="setup-max-words" type="number" min="5" max="25" step="1" value="12"><b>어절</b></label>
             <label><span>어절당 제한 시간</span><input id="setup-seconds-per-word" type="number" min="1" max="4" step="0.1" value="2.0"><b>초</b></label>
+            <label><span>진행 라운드</span><input id="setup-round-count" type="number" min="3" max="10" step="1" value="5"><b>회</b></label>
+            <label class="ai-rule-toggle"><span>AI 면접 문장<small>Pollinations 무료 API</small></span><input id="setup-use-ai" type="checkbox"><b>사용</b></label>
             <p>최대 문항 시간 <strong id="setup-time-preview">24.0초</strong></p>
           </fieldset>
           <div class="room-code-row">
@@ -71,6 +73,7 @@
 
     <section id="lobby-screen" class="screen lobby-screen hidden" aria-live="polite">
       <div class="lobby-card">
+        <div id="matching-loader" class="matching-loader" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         <p class="eyebrow">MULTIPLAYER WAITING ROOM</p>
         <h2 id="lobby-title">상대 지원자를 찾는 중</h2>
         <div class="room-ticket">
@@ -89,14 +92,29 @@
             <input id="room-seconds-per-word" type="number" min="1" max="4" step="0.1" value="2.5">
             <b>초</b>
           </label>
+          <label>
+            <span>진행 라운드<small>3회부터 10회까지 설정</small></span>
+            <input id="room-round-count" type="number" min="3" max="10" step="1" value="5">
+            <b>회</b>
+          </label>
+          <label class="ai-rule-toggle">
+            <span>AI 면접 문장<small id="room-ai-hint">무료 AI API로 질문·답변 생성</small></span>
+            <input id="room-use-ai" type="checkbox">
+            <b>사용</b>
+          </label>
           <div class="room-rules-footer">
             <p>최대 문항 제한 시간 <strong id="room-time-preview">20.0초</strong></p>
             <button id="save-room-rules" class="secondary-button">규칙 적용</button>
           </div>
         </div>
         <div id="lobby-players" class="lobby-players"></div>
+        <form id="lobby-chat-form" class="lobby-chat-form">
+          <input id="lobby-chat-input" maxlength="80" placeholder="대기실 메시지 입력" aria-label="대기실 메시지">
+          <button class="secondary-button" type="submit">전송</button>
+        </form>
         <p id="lobby-status" class="lobby-status">매칭 서버에 접속하고 있습니다<span class="waiting-dots">...</span></p>
         <button id="ready-button" class="primary-button hidden">준비 완료 <span>✓</span></button>
+        <button id="host-start-button" class="primary-button hidden">면접 레이스 시작 <span>→</span></button>
         <button id="cancel-match-button" class="secondary-button wide">매칭 취소</button>
       </div>
     </section>
@@ -104,11 +122,12 @@
     <section id="game-screen" class="screen game-screen hidden" aria-live="polite">
       <header class="game-header">
         <button id="quit-button" class="text-button" aria-label="처음 화면으로">← 나가기</button>
-        <div class="round-counter"><span id="round-current">01</span><i>/</i><span>10</span></div>
+        <div class="round-counter"><span id="round-current">01</span><i>/</i><span id="round-total">10</span></div>
         <div id="difficulty-badge" class="difficulty-badge">스타트업</div>
       </header>
 
       <aside id="opponent-hud" class="opponent-hud hidden"><p>RIVALS</p><div id="opponent-list"></div></aside>
+      <div id="race-event-banner" class="race-event-banner hidden" aria-live="assertive"></div>
 
       <div class="interview-room">
         <div id="danger-countdown" class="danger-countdown" aria-hidden="true"></div>

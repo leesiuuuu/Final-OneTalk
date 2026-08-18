@@ -36,6 +36,13 @@ function handleRoom(room) {
   }
 }
 
+function handleDestroyed(payload) {
+  closeStreams();
+  state.room = null;
+  state.startedRoom = null;
+  state.callbacks.onDestroyed?.(payload?.reason || '방이 종료되었습니다.');
+}
+
 function connectRoom(room) {
   state.matchStream?.close();
   state.matchStream = null;
@@ -43,7 +50,8 @@ function connectRoom(room) {
   state.room = room;
   const stream = new EventSource(`/api/rooms/${room.code}/events?playerId=${encodeURIComponent(state.playerId)}`);
   state.roomStream = stream;
-  ['room', 'progress', 'finish', 'leave'].forEach(eventName => stream.addEventListener(eventName, event => handleRoom(JSON.parse(event.data))));
+  ['room', 'progress', 'finish', 'leave', 'chat', 'attack', 'generating'].forEach(eventName => stream.addEventListener(eventName, event => handleRoom(JSON.parse(event.data))));
+  stream.addEventListener('destroyed', event => handleDestroyed(JSON.parse(event.data)));
   stream.onerror = () => state.callbacks.onConnection?.('reconnecting');
   handleRoom(room);
 }
@@ -100,6 +108,27 @@ export async function setRoomSettings(settings) {
   if (!state.room) return null;
   return request(`/api/rooms/${state.room.code}/settings`, {
     method: 'POST', body: JSON.stringify({ playerId: state.playerId, ...settings }),
+  });
+}
+
+export async function startPrivateRoom() {
+  if (!state.room) return null;
+  return request(`/api/rooms/${state.room.code}/start`, {
+    method: 'POST', body: JSON.stringify({ playerId: state.playerId }),
+  });
+}
+
+export async function sendLobbyChat(message) {
+  if (!state.room) return null;
+  return request(`/api/rooms/${state.room.code}/chat`, {
+    method: 'POST', body: JSON.stringify({ playerId: state.playerId, message }),
+  });
+}
+
+export async function attackPlayer(targetId) {
+  if (!state.room) return null;
+  return request(`/api/rooms/${state.room.code}/attack`, {
+    method: 'POST', body: JSON.stringify({ playerId: state.playerId, targetId }),
   });
 }
 

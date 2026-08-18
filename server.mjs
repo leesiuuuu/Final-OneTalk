@@ -10,6 +10,7 @@ import {
   submitHiveScore,
   verifyHiveSignature,
 } from './hive-server.mjs';
+import { aiQuestionsAvailable, generateInterviewQuestions } from './ai-questions.mjs';
 
 const SOURCE_ROOT = fileURLToPath(new URL('.', import.meta.url));
 const DIST_ROOT = join(SOURCE_ROOT, 'dist');
@@ -57,11 +58,15 @@ function safePlayer(input = {}) {
 
 function safeRoomSettings(input, fallback) {
   if (!input) return { ...fallback };
-  const maxWords = Math.round(Number(input.maxWords));
-  const secondsPerWord = Math.round(Number(input.secondsPerWord) * 10) / 10;
+  const maxWords = Math.round(Number(input.maxWords ?? fallback.maxWords));
+  const secondsPerWord = Math.round(Number(input.secondsPerWord ?? fallback.secondsPerWord) * 10) / 10;
+  const roundCount = Math.round(Number(input.roundCount ?? fallback.roundCount ?? 10));
+  const useAI = Boolean(input.useAI ?? fallback.useAI);
   if (!Number.isFinite(maxWords) || maxWords < 5 || maxWords > 25) throw new Error('최대 어절 수는 5~25로 설정해 주세요.');
   if (!Number.isFinite(secondsPerWord) || secondsPerWord < 1 || secondsPerWord > 4) throw new Error('어절당 제한 시간은 1.0~4.0초로 설정해 주세요.');
-  return { maxWords, secondsPerWord };
+  if (!Number.isFinite(roundCount) || roundCount < 3 || roundCount > 10) throw new Error('라운드는 3~10회로 설정해 주세요.');
+  if (useAI && !aiQuestionsAvailable()) throw new Error('무료 AI 질문 생성 API 키가 서버에 연결되지 않았습니다.');
+  return { maxWords, secondsPerWord, roundCount, useAI };
 }
 
 function makeCode() {
@@ -80,7 +85,12 @@ function publicRoom(room, viewerId) {
     startAt: room.startAt,
     provider: room.provider,
     kind: room.kind,
-    settings: room.settings,
+    settings: { ...room.settings },
+    settingsVersion: room.settingsVersion,
+    questions: room.questions,
+    aiFallback: room.aiFallback,
+    latestAttack: room.latestAttack,
+    messages: room.messages.slice(-12),
     players: [...room.players.values()].map(player => ({
       playerId: player.playerId,
       nickname: player.nickname,
@@ -92,6 +102,7 @@ function publicRoom(room, viewerId) {
       ready: player.ready,
       isHost: player.playerId === room.ownerId,
       isMe: player.playerId === viewerId,
+      attacksLeft: player.attacksLeft,
     })),
   };
 }
@@ -121,13 +132,14 @@ function broadcast(room, event = 'room') {
 function createRoom(owner, provider = 'local', requestedCode, kind = 'private', requestedSettings) {
   const code = requestedCode || makeCode();
   const defaults = {
-    startup: { maxWords: 8, secondsPerWord: 2.5 },
-    sme: { maxWords: 12, secondsPerWord: 2 },
-    enterprise: { maxWords: 16, secondsPerWord: 1.5 },
+    startup: { maxWords: 8, secondsPerWord: 2.5, roundCount: 10, useAI: false },
+    sme: { maxWords: 12, secondsPerWord: 2, roundCount: 10, useAI: false },
+    enterprise: { maxWords: 16, secondsPerWord: 1.5, roundCount: 10, useAI: false },
   };
   const room = {
     code, provider, kind, ownerId: owner.playerId, difficulty: owner.difficulty, status: 'waiting', startAt: null,
     settings: safeRoomSettings(requestedSettings, defaults[owner.difficulty]),
+    settingsVersion: 1, questions: null, aiFallback: null, latestAttack: null, attackSerial: 0, messages: [],
     players: new Map(), streams: new Map(), disconnectTimers: new Map(), createdAt: Date.now(),
   };
   addPlayer(room, owner);
@@ -140,6 +152,7 @@ function addPlayer(room, input) {
   const player = room.players.get(input.playerId) ?? {
     playerId: input.playerId, nickname: input.nickname, round: 0, progress: 0,
     score: 0, finished: false, left: false, ready: false,
+    attacksLeft: 2, lastAttackAt: 0,
   };
   player.left = false;
   room.players.set(input.playerId, player);
@@ -153,6 +166,43 @@ function startRoom(room) {
   room.status = 'starting';
   room.startAt = Date.now() + 4200;
   broadcast(room);
+}
+
+async function preparePrivateRoom(room) {
+  if (room.status !== 'waiting') throw new Error('이미 시작 중인 방입니다.');
+  if (room.players.size < 2) throw new Error('2명 이상 참가해야 시작할 수 있습니다.');
+  const guests = [...room.players.values()].filter(player => player.playerId !== room.ownerId);
+  if (!guests.every(player => player.ready)) throw new Error('모든 게스트가 준비를 완료해야 합니다.');
+  if (!room.settings.useAI) return startRoom(room);
+  room.status = 'generating';
+  room.aiFallback = null;
+  broadcast(room, 'generating');
+  try {
+    room.questions = await generateInterviewQuestions({
+      roundCount: room.settings.roundCount,
+      maxWords: room.settings.maxWords,
+      difficulty: room.difficulty,
+    });
+  } catch (error) {
+    room.questions = null;
+    room.aiFallback = error.message;
+  }
+  room.status = 'waiting';
+  startRoom(room);
+}
+
+function destroyRoom(room, reason = '방이 종료되었습니다.') {
+  if (!room || !rooms.has(room.code)) return;
+  room.status = 'destroyed';
+  const snapshotByPlayer = [...room.players.keys()].map(playerId => [playerId, publicRoom(room, playerId)]);
+  for (const [playerId, snapshot] of snapshotByPlayer) {
+    for (const res of room.streams.get(playerId) ?? []) emit(res, 'destroyed', { ...snapshot, reason });
+  }
+  room.disconnectTimers.forEach(timer => clearTimeout(timer));
+  clearTimeout(room.destroyTimer);
+  room.players.forEach(player => playerRooms.delete(player.playerId));
+  rooms.delete(room.code);
+  setTimeout(() => room.streams.forEach(clients => clients.forEach(res => res.end())), 30);
 }
 
 function scheduleQuickMatch(difficulty) {
@@ -191,11 +241,16 @@ function findRoom(code, playerId) {
 function updatePlayer(room, playerId, input) {
   const player = room.players.get(playerId);
   if (!player) throw new Error('참가자를 찾을 수 없습니다.');
-  player.round = Math.max(0, Math.min(10, Math.floor(Number(input.round) || 0)));
+  player.round = Math.max(0, Math.min(room.settings.roundCount, Math.floor(Number(input.round) || 0)));
   player.progress = Math.max(0, Math.min(1, Number(input.progress) || 0));
-  player.score = Math.max(0, Math.min(1100, Number(input.score) || 0));
+  player.score = Math.max(0, Math.min(110 * room.settings.roundCount, Number(input.score) || 0));
   if (input.finished) player.finished = true;
-  if ([...room.players.values()].every(item => item.finished)) room.status = 'finished';
+  if ([...room.players.values()].every(item => item.finished)) {
+    room.status = 'finished';
+    clearTimeout(room.destroyTimer);
+    room.destroyTimer = setTimeout(() => destroyRoom(room, '완료된 면접 방이 정리되었습니다.'), 90 * 1000);
+    room.destroyTimer.unref?.();
+  }
   broadcast(room, input.finished ? 'finish' : 'progress');
 }
 
@@ -209,11 +264,16 @@ function cancelPlayer(playerId) {
     clearTimeout(room.disconnectTimers.get(playerId));
     room.disconnectTimers.delete(playerId);
   }
-  if (room?.status === 'waiting') {
+  if (room && ['waiting', 'generating'].includes(room.status)) {
+    if (room.kind === 'private' && room.ownerId === playerId) {
+      destroyRoom(room, '방장이 나가서 방이 종료되었습니다.');
+      playerRooms.delete(playerId);
+      return;
+    }
     room.players.delete(playerId);
     room.streams.get(playerId)?.forEach(res => res.end());
     room.streams.delete(playerId);
-    if (room.players.size === 0) rooms.delete(code);
+    if (room.players.size === 0) destroyRoom(room);
     else {
       if (room.ownerId === playerId) room.ownerId = room.players.keys().next().value;
       broadcast(room, 'leave');
@@ -223,9 +283,15 @@ function cancelPlayer(playerId) {
     if (player && !player.finished) {
       player.left = true;
       player.finished = true;
-      if ([...room.players.values()].every(item => item.finished)) room.status = 'finished';
+      if ([...room.players.values()].every(item => item.finished)) {
+        room.status = 'finished';
+        clearTimeout(room.destroyTimer);
+        room.destroyTimer = setTimeout(() => destroyRoom(room, '완료된 면접 방이 정리되었습니다.'), 90 * 1000);
+        room.destroyTimer.unref?.();
+      }
       broadcast(room, 'leave');
     }
+    if ([...room.players.values()].every(item => item.left)) destroyRoom(room, '모든 참가자가 나가서 방이 종료되었습니다.');
   }
   playerRooms.delete(playerId);
 }
@@ -250,7 +316,7 @@ async function api(req, res, url) {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/config') {
-    return sendJson(res, 200, { hiveEnabled: hive.enabled, provider: hive.enabled ? 'hive' : 'local' });
+    return sendJson(res, 200, { hiveEnabled: hive.enabled, provider: hive.enabled ? 'hive' : 'local', aiQuestionsAvailable: aiQuestionsAvailable() });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/rooms') {
@@ -322,9 +388,19 @@ async function api(req, res, url) {
   if (req.method === 'POST' && match) {
     const input = JSON.parse((await readBody(req)).toString() || '{}');
     const room = findRoom(match[1], input.playerId);
+    if (room.status !== 'waiting') throw new Error('대기 중일 때만 준비 상태를 바꿀 수 있습니다.');
+    if (room.ownerId === input.playerId && room.kind === 'private') throw new Error('방장은 시작 버튼을 눌러 주세요.');
     room.players.get(input.playerId).ready = Boolean(input.ready);
-    if (room.players.size >= 2 && [...room.players.values()].every(player => player.ready)) startRoom(room);
-    else broadcast(room);
+    broadcast(room);
+    return sendJson(res, 200, publicRoom(room, input.playerId));
+  }
+
+  match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]+)\/start$/i);
+  if (req.method === 'POST' && match) {
+    const input = JSON.parse((await readBody(req)).toString() || '{}');
+    const room = findRoom(match[1], input.playerId);
+    if (room.kind !== 'private' || room.ownerId !== input.playerId) throw new Error('방장만 게임을 시작할 수 있습니다.');
+    await preparePrivateRoom(room);
     return sendJson(res, 200, publicRoom(room, input.playerId));
   }
 
@@ -336,8 +412,43 @@ async function api(req, res, url) {
     if (room.ownerId !== input.playerId) throw new Error('방장만 규칙을 변경할 수 있습니다.');
     if (room.status !== 'waiting') throw new Error('게임 시작 후에는 규칙을 변경할 수 없습니다.');
     room.settings = safeRoomSettings(input, room.settings);
-    room.players.forEach(player => { player.ready = false; });
+    room.settingsVersion += 1;
+    room.questions = null;
+    room.aiFallback = null;
+    room.players.forEach(player => { if (player.playerId !== room.ownerId) player.ready = false; });
     broadcast(room);
+    return sendJson(res, 200, publicRoom(room, input.playerId));
+  }
+
+  match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]+)\/chat$/i);
+  if (req.method === 'POST' && match) {
+    const input = JSON.parse((await readBody(req)).toString() || '{}');
+    const room = findRoom(match[1], input.playerId);
+    if (room.status !== 'waiting' && room.status !== 'generating') throw new Error('대기실에서만 채팅할 수 있습니다.');
+    const message = String(input.message ?? '').replace(/[<>&"']/g, '').trim().slice(0, 80);
+    if (!message) throw new Error('메시지를 입력해 주세요.');
+    const player = room.players.get(input.playerId);
+    room.messages.push({ id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, playerId: input.playerId, nickname: player.nickname, message, at: Date.now() });
+    room.messages = room.messages.slice(-20);
+    broadcast(room, 'chat');
+    return sendJson(res, 200, publicRoom(room, input.playerId));
+  }
+
+  match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]+)\/attack$/i);
+  if (req.method === 'POST' && match) {
+    const input = JSON.parse((await readBody(req)).toString() || '{}');
+    const room = findRoom(match[1], input.playerId);
+    if (room.status !== 'starting') throw new Error('게임 진행 중에만 압박할 수 있습니다.');
+    const attacker = room.players.get(input.playerId);
+    const target = room.players.get(String(input.targetId ?? ''));
+    if (attacker.left || attacker.finished) throw new Error('게임을 종료한 참가자는 압박할 수 없습니다.');
+    if (!target || target.playerId === attacker.playerId || target.left || target.finished) throw new Error('압박할 상대를 찾을 수 없습니다.');
+    if (attacker.attacksLeft <= 0) throw new Error('압박 카드를 모두 사용했습니다.');
+    if (Date.now() - attacker.lastAttackAt < 3000) throw new Error('압박 카드는 잠시 후 다시 사용할 수 있습니다.');
+    attacker.attacksLeft -= 1;
+    attacker.lastAttackAt = Date.now();
+    room.latestAttack = { id: ++room.attackSerial, attackerId: attacker.playerId, attackerName: attacker.nickname, targetId: target.playerId, targetName: target.nickname, penaltyMs: 2000, at: Date.now() };
+    broadcast(room, 'attack');
     return sendJson(res, 200, publicRoom(room, input.playerId));
   }
 
