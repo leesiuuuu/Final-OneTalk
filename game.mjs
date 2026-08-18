@@ -231,7 +231,8 @@ function showSynchronizedRoundReview(room) {
   $('#next-button').disabled = true;
   const updateCountdown = () => {
     const seconds = Math.max(1, Math.ceil(((room.roundState.nextRoundAt ?? Date.now()) - Date.now()) / 1000));
-    const label = room.roundState.index >= roundCount() - 1 ? '최종 결과' : '다음 라운드';
+    const totalRounds = Number(room.settings?.roundCount) || roundCount();
+    const label = room.roundState.index >= totalRounds - 1 ? '최종 결과' : '다음 라운드';
     $('#auto-next-hint').textContent = `모든 답변 확인 완료 · ${seconds}초 후 ${label}`;
     $('#next-button').innerHTML = `${label} · ${seconds} <span>→</span>`;
   };
@@ -719,15 +720,51 @@ function multiplayerSetup() {
   const difficulty = maxWords <= 8 ? 'startup' : maxWords <= 12 ? 'sme' : 'enterprise';
   return { difficulty, settings: { maxWords, secondsPerWord, roundCount, useAI } };
 }
+function normalizeNumberInput(input) {
+  const minimum = Number(input.min);
+  const maximum = Number(input.max);
+  const step = Number(input.step) || 1;
+  const raw = Number(input.value);
+  const bounded = Math.min(maximum, Math.max(minimum, Number.isFinite(raw) ? raw : minimum));
+  const precision = (String(step).split('.')[1] || '').length;
+  input.value = bounded.toFixed(precision);
+  input.classList.remove('invalid');
+  return bounded;
+}
+function setupRuleInputs() {
+  return [$('#setup-max-words'), $('#setup-seconds-per-word'), $('#setup-round-count')];
+}
+function roomRuleInputs() {
+  return [$('#room-max-words'), $('#room-seconds-per-word'), $('#room-round-count')];
+}
+function markNumberValidity(inputs, button) {
+  const valid = inputs.every(input => {
+    const isValid = input.validity.valid && input.value !== '';
+    input.classList.toggle('invalid', !isValid);
+    return isValid;
+  });
+  if (button) button.disabled = !valid;
+  return valid;
+}
 function previewMultiplayerSetup() {
   const { settings } = multiplayerSetup();
   const total = settings.maxWords * settings.secondsPerWord;
   $('#setup-time-preview').textContent = Number.isFinite(total) ? `${total.toFixed(1)}초` : '--';
+  markNumberValidity(setupRuleInputs(), $('#create-room-button'));
 }
 $('#setup-max-words').addEventListener('input', previewMultiplayerSetup);
 $('#setup-seconds-per-word').addEventListener('input', previewMultiplayerSetup);
 $('#setup-round-count').addEventListener('input', previewMultiplayerSetup);
+setupRuleInputs().forEach(input => input.addEventListener('change', () => {
+  normalizeNumberInput(input);
+  previewMultiplayerSetup();
+}));
+setupRuleInputs().forEach(input => input.addEventListener('blur', () => {
+  normalizeNumberInput(input);
+  previewMultiplayerSetup();
+}));
 $('#create-room-button').addEventListener('click', () => {
+  setupRuleInputs().forEach(normalizeNumberInput);
   const setup = multiplayerSetup();
   enterMultiplayer(() => createPrivateRoom(nickname(), setup.difficulty, setup.settings));
 });
@@ -748,6 +785,7 @@ $('#host-start-button').addEventListener('click', () => {
   });
 });
 async function saveRoomRules() {
+  roomRuleInputs().forEach(normalizeNumberInput);
   const maxWords = Number($('#room-max-words').value);
   const secondsPerWord = Number($('#room-seconds-per-word').value);
   const roundCount = Number($('#room-round-count').value);
@@ -759,10 +797,22 @@ function previewRoomRules() {
   const maxWords = Number($('#room-max-words').value) || 0;
   const secondsPerWord = Number($('#room-seconds-per-word').value) || 0;
   $('#room-time-preview').textContent = `${(maxWords * secondsPerWord).toFixed(1)}초`;
+  const room = multiplayerRoom();
+  const me = room?.players.find(player => player.isMe);
+  const canSave = room?.kind === 'private' && room.status === 'waiting' && me?.isHost;
+  if (canSave) markNumberValidity(roomRuleInputs(), $('#save-room-rules'));
 }
 $('#room-max-words').addEventListener('input', previewRoomRules);
 $('#room-seconds-per-word').addEventListener('input', previewRoomRules);
 $('#room-round-count').addEventListener('input', previewRoomRules);
+roomRuleInputs().forEach(input => input.addEventListener('change', () => {
+  normalizeNumberInput(input);
+  previewRoomRules();
+}));
+roomRuleInputs().forEach(input => input.addEventListener('blur', () => {
+  normalizeNumberInput(input);
+  previewRoomRules();
+}));
 $('#room-use-ai').addEventListener('change', previewRoomRules);
 $('#save-room-rules').addEventListener('click', saveRoomRules);
 $('#lobby-chat-form').addEventListener('submit', async event => {
