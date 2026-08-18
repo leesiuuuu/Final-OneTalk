@@ -57,7 +57,8 @@
             <label><span>답변 최대 어절</span><input id="setup-max-words" type="number" min="5" max="25" step="1" value="12"><b>어절</b></label>
             <label><span>어절당 제한 시간</span><input id="setup-seconds-per-word" type="number" min="1" max="4" step="0.1" value="2.0"><b>초</b></label>
             <label><span>진행 라운드</span><input id="setup-round-count" type="number" min="3" max="10" step="1" value="5"><b>회</b></label>
-            <label class="ai-rule-toggle"><span>AI 면접 문장<small>Groq · Llama 3.3 70B</small></span><input id="setup-use-ai" type="checkbox"><b>사용</b></label>
+            <label class="ai-rule-toggle"><span>AI 면접 문항</span><input id="setup-use-ai" type="checkbox"><b>사용</b></label>
+            <p class="ai-provider-note">AI 연결 · GROQ / 질문·답변 자동 생성</p>
             <p>최대 문항 시간 <strong id="setup-time-preview">24.0초</strong></p>
           </fieldset>
           <div class="room-code-row">
@@ -98,10 +99,11 @@
             <b>회</b>
           </label>
           <label class="ai-rule-toggle">
-            <span>AI 면접 문장<small id="room-ai-hint">무료 AI API로 질문·답변 생성</small></span>
+            <span>AI 면접 문항</span>
             <input id="room-use-ai" type="checkbox">
             <b>사용</b>
           </label>
+          <p id="room-ai-hint" class="ai-provider-note">AI 연결 상태 확인 중</p>
           <div class="room-rules-footer">
             <p>최대 문항 제한 시간 <strong id="room-time-preview">20.0초</strong></p>
             <button id="save-room-rules" class="secondary-button">규칙 적용</button>
@@ -134,7 +136,7 @@
         <div id="phaser-stage" class="phaser-stage" aria-label="Phaser로 렌더링한 면접관 5명"></div>
 
         <div class="question-wrap">
-          <p class="question-label">QUESTION <span id="question-number">01</span></p>
+          <p class="question-label">QUESTION <span id="question-number">01</span><em id="question-source-badge" class="question-source-badge hidden">AI GENERATED · GROQ</em></p>
           <h2 id="question-text">본인을 한 문장으로 소개해 주세요.</h2>
         </div>
 
@@ -180,6 +182,7 @@
             <span>최대 콤보 <b id="max-combo-score">0</b></span>
             <span>속도 <b id="speed-score">+0.0</b></span>
           </div>
+          <div id="round-review-panel" class="round-review-panel hidden" aria-live="polite"></div>
           <small id="auto-next-hint" class="auto-next-hint">결과 표시 중…</small>
           <button id="next-button" class="primary-button">다음 질문 <span>→</span></button>
         </div>

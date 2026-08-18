@@ -90,7 +90,8 @@ function publicRoom(room, viewerId) {
     questions: room.questions,
     aiFallback: room.aiFallback,
     latestAttack: room.latestAttack,
-    messages: room.messages.slice(-12),
+    latestChat: room.latestChat,
+    roundState: { ...room.roundState },
     players: [...room.players.values()].map(player => ({
       playerId: player.playerId,
       nickname: player.nickname,
@@ -103,6 +104,8 @@ function publicRoom(room, viewerId) {
       isHost: player.playerId === room.ownerId,
       isMe: player.playerId === viewerId,
       attacksLeft: player.attacksLeft,
+      completedRound: player.completedRound,
+      roundScore: player.roundScore,
     })),
   };
 }
@@ -139,7 +142,9 @@ function createRoom(owner, provider = 'local', requestedCode, kind = 'private', 
   const room = {
     code, provider, kind, ownerId: owner.playerId, difficulty: owner.difficulty, status: 'waiting', startAt: null,
     settings: safeRoomSettings(requestedSettings, defaults[owner.difficulty]),
-    settingsVersion: 1, questions: null, aiFallback: null, latestAttack: null, attackSerial: 0, messages: [],
+    settingsVersion: 1, questions: null, aiFallback: null,
+    latestAttack: null, attackSerial: 0, latestChat: null, chatSerial: 0,
+    roundState: { index: 0, phase: 'waiting', nextRoundAt: null }, roundTimer: null,
     players: new Map(), streams: new Map(), disconnectTimers: new Map(), createdAt: Date.now(),
   };
   addPlayer(room, owner);
@@ -153,6 +158,7 @@ function addPlayer(room, input) {
     playerId: input.playerId, nickname: input.nickname, round: 0, progress: 0,
     score: 0, finished: false, left: false, ready: false,
     attacksLeft: 2, lastAttackAt: 0,
+    completedRound: -1, roundScore: 0,
   };
   player.left = false;
   room.players.set(input.playerId, player);
@@ -165,7 +171,54 @@ function startRoom(room) {
   if (room.status !== 'waiting' || room.players.size < 2) return;
   room.status = 'starting';
   room.startAt = Date.now() + 4200;
+  room.roundState = { index: 0, phase: 'playing', nextRoundAt: null };
+  room.players.forEach(player => {
+    player.completedRound = -1;
+    player.roundScore = 0;
+  });
   broadcast(room);
+}
+
+function activePlayers(room) {
+  return [...room.players.values()].filter(player => !player.left && !player.finished);
+}
+
+function maybeStartRoundReview(room) {
+  if (room.status !== 'starting' || room.roundState.phase !== 'playing') return;
+  const active = activePlayers(room);
+  if (!active.length || !active.every(player => player.completedRound >= room.roundState.index)) return;
+  room.roundState.phase = 'review';
+  room.roundState.nextRoundAt = Date.now() + 5500;
+  broadcast(room, 'round-review');
+  clearTimeout(room.roundTimer);
+  room.roundTimer = setTimeout(() => {
+    if (!rooms.has(room.code) || room.roundState.phase !== 'review') return;
+    if (room.roundState.index >= room.settings.roundCount - 1) {
+      room.roundState.phase = 'final';
+    } else {
+      room.roundState.index += 1;
+      room.roundState.phase = 'playing';
+    }
+    room.roundState.nextRoundAt = null;
+    broadcast(room, 'round-start');
+  }, 5500);
+  room.roundTimer.unref?.();
+}
+
+function completeRound(room, playerId, input) {
+  if (room.status !== 'starting') throw new Error('진행 중인 게임이 아닙니다.');
+  const roundIndex = Math.floor(Number(input.round));
+  if (roundIndex !== room.roundState.index) throw new Error('현재 진행 중인 라운드와 일치하지 않습니다.');
+  const player = room.players.get(playerId);
+  if (!player || player.left || player.finished) throw new Error('참가자를 찾을 수 없습니다.');
+  if (player.completedRound >= roundIndex) return;
+  player.completedRound = roundIndex;
+  player.round = roundIndex + 1;
+  player.roundScore = Math.max(0, Math.min(110, Number(input.roundScore) || 0));
+  player.score = Math.max(0, Math.min(110 * room.settings.roundCount, Number(input.score) || 0));
+  player.progress = Math.min(1, (roundIndex + 1) / room.settings.roundCount);
+  broadcast(room, 'progress');
+  maybeStartRoundReview(room);
 }
 
 async function preparePrivateRoom(room) {
@@ -200,6 +253,7 @@ function destroyRoom(room, reason = '방이 종료되었습니다.') {
   }
   room.disconnectTimers.forEach(timer => clearTimeout(timer));
   clearTimeout(room.destroyTimer);
+  clearTimeout(room.roundTimer);
   room.players.forEach(player => playerRooms.delete(player.playerId));
   rooms.delete(room.code);
   setTimeout(() => room.streams.forEach(clients => clients.forEach(res => res.end())), 30);
@@ -241,9 +295,9 @@ function findRoom(code, playerId) {
 function updatePlayer(room, playerId, input) {
   const player = room.players.get(playerId);
   if (!player) throw new Error('참가자를 찾을 수 없습니다.');
-  player.round = Math.max(0, Math.min(room.settings.roundCount, Math.floor(Number(input.round) || 0)));
-  player.progress = Math.max(0, Math.min(1, Number(input.progress) || 0));
-  player.score = Math.max(0, Math.min(110 * room.settings.roundCount, Number(input.score) || 0));
+  player.round = Math.max(player.round, Math.max(0, Math.min(room.settings.roundCount, Math.floor(Number(input.round) || 0))));
+  player.progress = Math.max(player.progress, Math.max(0, Math.min(1, Number(input.progress) || 0)));
+  player.score = Math.max(player.score, Math.max(0, Math.min(110 * room.settings.roundCount, Number(input.score) || 0)));
   if (input.finished) player.finished = true;
   if ([...room.players.values()].every(item => item.finished)) {
     room.status = 'finished';
@@ -277,6 +331,7 @@ function cancelPlayer(playerId) {
     else {
       if (room.ownerId === playerId) room.ownerId = room.players.keys().next().value;
       broadcast(room, 'leave');
+      maybeStartRoundReview(room);
     }
   } else if (room) {
     const player = room.players.get(playerId);
@@ -290,6 +345,7 @@ function cancelPlayer(playerId) {
         room.destroyTimer.unref?.();
       }
       broadcast(room, 'leave');
+      maybeStartRoundReview(room);
     }
     if ([...room.players.values()].every(item => item.left)) destroyRoom(room, '모든 참가자가 나가서 방이 종료되었습니다.');
   }
@@ -428,17 +484,18 @@ async function api(req, res, url) {
     const message = String(input.message ?? '').replace(/[<>&"']/g, '').trim().slice(0, 80);
     if (!message) throw new Error('메시지를 입력해 주세요.');
     const player = room.players.get(input.playerId);
-    room.messages.push({ id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, playerId: input.playerId, nickname: player.nickname, message, at: Date.now() });
-    room.messages = room.messages.slice(-20);
+    room.latestChat = { id: ++room.chatSerial, playerId: input.playerId, nickname: player.nickname, message, at: Date.now() };
     broadcast(room, 'chat');
-    return sendJson(res, 200, publicRoom(room, input.playerId));
+    const response = publicRoom(room, input.playerId);
+    room.latestChat = null;
+    return sendJson(res, 200, response);
   }
 
   match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]+)\/attack$/i);
   if (req.method === 'POST' && match) {
     const input = JSON.parse((await readBody(req)).toString() || '{}');
     const room = findRoom(match[1], input.playerId);
-    if (room.status !== 'starting') throw new Error('게임 진행 중에만 압박할 수 있습니다.');
+    if (room.status !== 'starting' || room.roundState.phase !== 'playing') throw new Error('라운드 진행 중에만 압박할 수 있습니다.');
     const attacker = room.players.get(input.playerId);
     const target = room.players.get(String(input.targetId ?? ''));
     if (attacker.left || attacker.finished) throw new Error('게임을 종료한 참가자는 압박할 수 없습니다.');
@@ -449,6 +506,14 @@ async function api(req, res, url) {
     attacker.lastAttackAt = Date.now();
     room.latestAttack = { id: ++room.attackSerial, attackerId: attacker.playerId, attackerName: attacker.nickname, targetId: target.playerId, targetName: target.nickname, penaltyMs: 2000, at: Date.now() };
     broadcast(room, 'attack');
+    return sendJson(res, 200, publicRoom(room, input.playerId));
+  }
+
+  match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]+)\/round-complete$/i);
+  if (req.method === 'POST' && match) {
+    const input = JSON.parse((await readBody(req)).toString() || '{}');
+    const room = findRoom(match[1], input.playerId);
+    completeRound(room, input.playerId, input);
     return sendJson(res, 200, publicRoom(room, input.playerId));
   }
 

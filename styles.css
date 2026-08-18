@@ -123,6 +123,7 @@ kbd { padding: 2px 6px; border: 1px solid #c4c0b7; border-radius: 3px; backgroun
 .interviewer.negative .avatar { background: var(--red); }
 .question-wrap { padding: 27px 0 20px; text-align: center; }
 .question-label { margin: 0; color: var(--red); font-size: 10px; font-weight: 700; letter-spacing: .18em; }
+.question-source-badge { display: inline-block; margin-left: 9px; padding: 3px 5px; border: 2px solid var(--ink); background: var(--lime); color: var(--ink); font-style: normal; font-size: 8px; letter-spacing: .04em; vertical-align: middle; }
 .question-wrap h2 { margin: 8px 0 0; font-size: clamp(21px, 2.7vw, 34px); letter-spacing: -.035em; }
 .typing-panel { padding: clamp(20px, 3vw, 36px); background: white; border: 1px solid #dedad1; box-shadow: 0 18px 50px #25200e12; }
 .timer-row { display: grid; grid-template-columns: auto 1fr 45px; gap: 14px; align-items: center; color: #77766f; font-size: 11px; font-weight: 700; }
@@ -973,10 +974,13 @@ kbd {
 .multiplayer-rule-setup { display: grid; gap: 7px; margin: 2px 0; padding: 10px; border: 2px solid var(--ink); background: var(--cream); }
 .multiplayer-rule-setup legend { padding: 0 6px; color: var(--red); font-size: 9px; font-weight: 700; }
 .multiplayer-rule-setup label { grid-template-columns: 1fr 68px 24px; gap: 7px; }
+.multiplayer-rule-setup .ai-rule-toggle { grid-template-columns: 1fr 32px 48px; }
+.multiplayer-rule-setup label span small { display: block; margin-top: 3px; color: #77736d; font-size: 8px; font-weight: 400; }
 .multiplayer-rule-setup input { height: 32px; text-align: center; }
 .multiplayer-rule-setup b { font-size: 9px; }
 .multiplayer-rule-setup p { margin: 0; padding-top: 6px; border-top: 1px dashed #aaa087; color: #676356; font-size: 9px; text-align: right; }
 .multiplayer-rule-setup p strong { color: var(--red); }
+.multiplayer-rule-setup .ai-provider-note { padding: 7px 8px; border: 2px dashed #aaa087; background: #e9dfc5; color: #676356; text-align: left; }
 .ai-rule-toggle input[type="checkbox"] { width: 24px; height: 24px; accent-color: var(--red); }
 .secondary-button { min-height: 42px; border: 3px solid var(--ink); border-radius: 0; background: var(--cream); color: var(--ink); box-shadow: 4px 4px 0 var(--ink); font-family: inherit; font-weight: 700; cursor: pointer; }
 .secondary-button:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); }
@@ -1003,6 +1007,7 @@ kbd {
 .room-rules input { width: 100%; height: 34px; border: 2px solid var(--ink); border-radius: 0; background: var(--cream); color: var(--ink); font: inherit; font-weight: 700; text-align: center; }
 .room-rules input:disabled { opacity: .65; }
 .room-rules label b { font-size: 9px; }
+.room-rules .ai-provider-note { margin: 3px 0 0; padding: 7px 8px; border: 2px dashed #aaa087; background: var(--cream); color: #676356; font-size: 8px; }
 .room-rules-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
 .room-rules-footer p { margin: 0; font-size: 9px; }
 .room-rules-footer p strong { color: var(--red); }
@@ -1015,6 +1020,11 @@ kbd {
 .player-chat-bubble { position: absolute; z-index: 3; left: 50%; bottom: calc(100% + 9px); width: max-content; max-width: 150px; padding: 7px 9px; border: 2px solid var(--ink); background: white; box-shadow: 3px 3px 0 var(--ink); font-size: 9px; font-style: normal; line-height: 1.45; transform: translateX(-50%); animation: bubbleIn .22s ease-out both; }
 .player-chat-bubble::after { content: ""; position: absolute; top: 100%; left: 50%; width: 8px; height: 8px; border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink); background: white; transform: translate(-50%, -5px) rotate(45deg); }
 @keyframes bubbleIn { from { opacity: 0; transform: translate(-50%, 5px) scale(.94); } }
+.round-review-panel { margin: 15px 0 4px; padding: 10px 12px; border: 2px dashed var(--ink); background: #e9dfc5; text-align: left; }
+.round-review-panel > strong { display: block; margin-bottom: 7px; color: var(--red); font-size: 10px; letter-spacing: .08em; text-align: center; }
+.round-review-row { display: grid; grid-template-columns: 28px 1fr auto auto; gap: 8px; align-items: center; padding: 4px 0; font-size: 9px; }
+.round-review-row.me { color: var(--blue); font-weight: 700; }
+.round-review-row em { font-style: normal; color: #77736d; }
 .lobby-chat-form { display: grid; grid-template-columns: 1fr 84px; gap: 8px; margin: 12px 0; }
 .lobby-chat-form input { min-width: 0; height: 42px; padding: 0 10px; border: 3px solid var(--ink); background: white; color: var(--ink); font: inherit; }
 .lobby-status { min-height: 25px; font-size: 12px; }

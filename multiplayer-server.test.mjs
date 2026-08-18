@@ -150,8 +150,10 @@ test('대기실 채팅과 게임 중 압박 카드를 서버가 검증한다', a
     const code = owner.data.code;
     await post(base, `/api/rooms/${code}/join`, { playerId: 'battle-guest', nickname: '상대', difficulty: 'startup' });
     const chat = await post(base, `/api/rooms/${code}/chat`, { playerId: 'battle-guest', message: '준비됐어요!' });
-    assert.equal(chat.data.messages.at(-1).message, '준비됐어요!');
-    await post(base, `/api/rooms/${code}/ready`, { playerId: 'battle-guest', ready: true });
+    assert.equal(chat.data.latestChat.message, '준비됐어요!');
+    assert.equal('messages' in chat.data, false);
+    const ready = await post(base, `/api/rooms/${code}/ready`, { playerId: 'battle-guest', ready: true });
+    assert.equal(ready.data.latestChat, null);
     await post(base, `/api/rooms/${code}/start`, { playerId: 'battle-owner' });
     const attack = await post(base, `/api/rooms/${code}/attack`, { playerId: 'battle-owner', targetId: 'battle-guest' });
     assert.equal(attack.status, 200);
@@ -159,6 +161,37 @@ test('대기실 채팅과 게임 중 압박 카드를 서버가 검증한다', a
     assert.equal(attack.data.players.find(player => player.isMe).attacksLeft, 1);
     const cooldown = await post(base, `/api/rooms/${code}/attack`, { playerId: 'battle-owner', targetId: 'battle-guest' });
     assert.equal(cooldown.status, 400);
+  });
+});
+
+test('모든 참가자가 답변을 마쳐야 라운드 중간 점검으로 전환된다', async () => {
+  await withServer(async base => {
+    const owner = await post(base, '/api/rooms', {
+      playerId: 'round-owner', nickname: '방장', difficulty: 'startup',
+      settings: { maxWords: 8, secondsPerWord: 2.5, roundCount: 3, useAI: false },
+    });
+    const code = owner.data.code;
+    await post(base, `/api/rooms/${code}/join`, { playerId: 'round-guest', nickname: '상대', difficulty: 'startup' });
+    await post(base, `/api/rooms/${code}/ready`, { playerId: 'round-guest', ready: true });
+    await post(base, `/api/rooms/${code}/start`, { playerId: 'round-owner' });
+
+    const first = await post(base, `/api/rooms/${code}/round-complete`, {
+      playerId: 'round-owner', round: 0, roundScore: 91.5, score: 91.5,
+    });
+    assert.equal(first.data.roundState.phase, 'playing');
+    assert.equal(first.data.players.find(player => player.isMe).completedRound, 0);
+
+    const second = await post(base, `/api/rooms/${code}/round-complete`, {
+      playerId: 'round-guest', round: 0, roundScore: 82, score: 82,
+    });
+    assert.equal(second.data.roundState.phase, 'review');
+    assert.ok(second.data.roundState.nextRoundAt > Date.now());
+    assert.equal(second.data.players.find(player => player.playerId === 'round-guest').roundScore, 82);
+
+    const earlyNextRound = await post(base, `/api/rooms/${code}/round-complete`, {
+      playerId: 'round-owner', round: 1, roundScore: 90, score: 181.5,
+    });
+    assert.equal(earlyNextRound.status, 400);
   });
 });
 

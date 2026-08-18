@@ -2,7 +2,7 @@ import { splitWords, evaluateAnswer, updateCombo } from './scoring.mjs';
 import { interviewStage } from './src/interview-stage.ts';
 import { audioSystem } from './src/audio-system.ts';
 import {
-  attackPlayer, configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
+  attackPlayer, completeMultiplayerRound, configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
   leaveMultiplayer, multiplayerRoom, quickMatch, sendLobbyChat, sendProgress, setReady,
   setRoomSettings, signalMultiplayerExit, startPrivateRoom,
 } from './multiplayer.mjs';
@@ -77,12 +77,14 @@ let feedbackCountdownTimer = 0;
 let feedbackReady = false;
 let gameMode = 'single';
 let multiplayerStartTimer = 0;
+let multiplayerReviewTimer = 0;
 let customRules = null;
 let customQuestions = null;
 let phaserDangerActive = false;
 let lastAttackId = 0;
 let aiQuestionsAvailable = false;
 const leftPlayerIds = new Set();
+const chatBubbleTimers = new Map();
 
 function showScreen(name) {
   Object.entries(screens).forEach(([key, element]) => element.classList.toggle('hidden', key !== name));
@@ -127,9 +129,7 @@ function renderLobby(room) {
   $('#lobby-players').innerHTML = Array.from({ length: 4 }, (_, index) => {
     const player = players[index];
     if (!player) return `<div class="lobby-player waiting"><span>SLOT ${index + 1}</span><strong>대기 중</strong></div>`;
-    const chat = [...(room?.messages ?? [])].reverse().find(item => item.playerId === player.playerId);
-    const freshChat = chat && Date.now() - chat.at < 15000 ? `<em class="player-chat-bubble">${chat.message}</em>` : '';
-    return `<div class="lobby-player ${player.ready ? 'ready' : ''}">${freshChat}<span>${player.isMe ? 'YOU' : player.isHost ? 'HOST' : `PLAYER ${index + 1}`}</span><strong>${player.nickname}</strong><small>${player.isHost ? ' 방장' : player.ready ? ' READY' : ' 준비 전'}</small></div>`;
+    return `<div class="lobby-player ${player.ready ? 'ready' : ''}" data-player-id="${player.playerId}"><span>${player.isMe ? 'YOU' : player.isHost ? 'HOST' : `PLAYER ${index + 1}`}</span><strong>${player.nickname}</strong><small>${player.isHost ? ' 방장' : player.ready ? ' READY' : ' 준비 전'}</small></div>`;
   }).join('');
   if (!room) return;
   selectedDifficulty = room.difficulty;
@@ -166,7 +166,27 @@ function renderLobby(room) {
       : (me?.ready ? '준비 완료 · 방장의 시작을 기다리는 중' : '준비 버튼을 누르면 방장이 게임을 시작할 수 있습니다');
 }
 
-function renderMultiplayerRoom(room) {
+function showLobbyChat(chat) {
+  if (!chat || screens.lobby.classList.contains('hidden')) return;
+  const player = [...$('#lobby-players').children].find(item => item.dataset.playerId === chat.playerId);
+  if (!player) return;
+  player.querySelector('.player-chat-bubble')?.remove();
+  clearTimeout(chatBubbleTimers.get(chat.playerId));
+  const bubble = document.createElement('em');
+  bubble.className = 'player-chat-bubble';
+  bubble.textContent = chat.message;
+  player.append(bubble);
+  chatBubbleTimers.set(chat.playerId, window.setTimeout(() => {
+    bubble.remove();
+    chatBubbleTimers.delete(chat.playerId);
+  }, 4200));
+}
+
+function renderMultiplayerRoom(room, eventName = 'room') {
+  if (eventName === 'chat') {
+    showLobbyChat(room.latestChat);
+    return;
+  }
   renderLobby(room);
   room.players.filter(player => player.left).forEach(player => {
     if (!leftPlayerIds.has(player.playerId)) flash(`${player.nickname}님이 면접에서 나갔습니다`);
@@ -194,6 +214,41 @@ function renderMultiplayerRoom(room) {
     }
   }
   if (!screens.result.classList.contains('hidden')) renderMatchResult(room);
+  if (room.roundState?.phase === 'review') showSynchronizedRoundReview(room);
+  if (eventName === 'round-start') advanceSynchronizedRound(room);
+}
+
+function showSynchronizedRoundReview(room) {
+  if (gameMode !== 'multi' || screens.game.classList.contains('hidden')) return;
+  window.clearInterval(feedbackCountdownTimer);
+  window.clearTimeout(feedbackAutoTimer);
+  const ranked = [...room.players].filter(player => !player.left).sort((a, b) => b.score - a.score);
+  const panel = $('#round-review-panel');
+  panel.classList.remove('hidden');
+  panel.innerHTML = `<strong>ROUND ${room.roundState.index + 1} 중간 점검</strong>${ranked.map((player, index) => `
+    <span class="round-review-row ${player.isMe ? 'me' : ''}"><b>${index + 1}위</b><span>${player.nickname}</span><em>+${player.roundScore.toFixed(1)}</em><b>${player.score.toFixed(1)}점</b></span>`).join('')}`;
+  feedbackReady = false;
+  $('#next-button').disabled = true;
+  const updateCountdown = () => {
+    const seconds = Math.max(1, Math.ceil(((room.roundState.nextRoundAt ?? Date.now()) - Date.now()) / 1000));
+    const label = room.roundState.index >= roundCount() - 1 ? '최종 결과' : '다음 라운드';
+    $('#auto-next-hint').textContent = `모든 답변 확인 완료 · ${seconds}초 후 ${label}`;
+    $('#next-button').innerHTML = `${label} · ${seconds} <span>→</span>`;
+  };
+  updateCountdown();
+  multiplayerReviewTimer = window.setInterval(updateCountdown, 250);
+}
+
+function advanceSynchronizedRound(room) {
+  window.clearInterval(multiplayerReviewTimer);
+  if (gameMode !== 'multi' || screens.game.classList.contains('hidden')) return;
+  if (room.roundState.phase === 'final') {
+    showResults();
+    return;
+  }
+  if (room.roundState.phase !== 'playing' || room.roundState.index <= round) return;
+  round = room.roundState.index;
+  beginRound();
 }
 
 function showRaceEvent(message, type = '') {
@@ -334,6 +389,7 @@ function beginGame() {
   $('#round-total').textContent = roundCount();
   showScreen('game');
   $('#difficulty-badge').textContent = CONFIG[selectedDifficulty].label;
+  $('#question-source-badge').classList.toggle('hidden', !(gameMode === 'multi' && customQuestions?.length));
   $('#opponent-hud').classList.toggle('hidden', gameMode !== 'multi');
   $('#match-result').classList.add('hidden');
   beginRound();
@@ -344,6 +400,7 @@ async function beginRound() {
   window.clearTimeout(feedbackUnlockTimer);
   window.clearTimeout(feedbackAutoTimer);
   window.clearInterval(feedbackCountdownTimer);
+  window.clearInterval(multiplayerReviewTimer);
   feedbackReady = false;
   const [question, answer] = currentPair();
   committed = [];
@@ -372,6 +429,8 @@ async function beginRound() {
   $('#game-screen').classList.remove('danger-mode');
   renderTargetGuide();
   $('#feedback-overlay').classList.add('hidden');
+  $('#round-review-panel').classList.add('hidden');
+  $('#round-review-panel').replaceChildren();
   retriggerClass($('.interview-room'), 'round-enter');
   interviewStage.setDanger(false);
   phaserDangerActive = false;
@@ -494,7 +553,9 @@ function finishRound(timedOut = false) {
   if (timedOut) audioSystem.timeout();
   else audioSystem.submit();
   history.push({ ...score, maxCombo, answer: committed.join(' ') });
-  if (gameMode === 'multi') sendProgress({ round: round + 1, progress: (round + 1) / roundCount(), score: totalScore() });
+  if (gameMode === 'multi') {
+    completeMultiplayerRound({ round, roundScore: score.totalScore, score: totalScore() }).catch(error => flash(error.message));
+  }
   const good = score.accuracy >= CONFIG[selectedDifficulty].pass;
   interviewStage.reactAll(good);
 
@@ -515,6 +576,15 @@ function finishRound(timedOut = false) {
     animateQuestionScore(score.totalScore);
     feedbackUnlockTimer = window.setTimeout(() => {
       if (!roundClosed || $('#feedback-overlay').classList.contains('hidden')) return;
+      if (gameMode === 'multi') {
+        feedbackReady = false;
+        $('#next-button').disabled = true;
+        $('#auto-next-hint').textContent = '다른 지원자의 답변을 기다리는 중…';
+        $('#next-button').innerHTML = '응답 대기 중 <span>…</span>';
+        const room = multiplayerRoom();
+        if (room?.roundState?.phase === 'review') showSynchronizedRoundReview(room);
+        return;
+      }
       feedbackReady = true;
       $('#next-button').disabled = false;
       startFeedbackAutoAdvance();

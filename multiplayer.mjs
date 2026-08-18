@@ -27,9 +27,9 @@ function closeStreams() {
   state.matchStream = null;
 }
 
-function handleRoom(room) {
+function handleRoom(room, eventName = 'room') {
   state.room = room;
-  state.callbacks.onRoom?.(room);
+  state.callbacks.onRoom?.(room, eventName);
   if (room.status === 'starting' && state.startedRoom !== room.code) {
     state.startedRoom = room.code;
     state.callbacks.onMatchStart?.(room);
@@ -50,10 +50,10 @@ function connectRoom(room) {
   state.room = room;
   const stream = new EventSource(`/api/rooms/${room.code}/events?playerId=${encodeURIComponent(state.playerId)}`);
   state.roomStream = stream;
-  ['room', 'progress', 'finish', 'leave', 'chat', 'attack', 'generating'].forEach(eventName => stream.addEventListener(eventName, event => handleRoom(JSON.parse(event.data))));
+  ['room', 'progress', 'finish', 'leave', 'chat', 'attack', 'generating', 'round-review', 'round-start'].forEach(eventName => stream.addEventListener(eventName, event => handleRoom(JSON.parse(event.data), eventName)));
   stream.addEventListener('destroyed', event => handleDestroyed(JSON.parse(event.data)));
   stream.onerror = () => state.callbacks.onConnection?.('reconnecting');
-  handleRoom(room);
+  handleRoom(room, 'room');
 }
 
 function waitForMatch() {
@@ -129,6 +129,13 @@ export async function attackPlayer(targetId) {
   if (!state.room) return null;
   return request(`/api/rooms/${state.room.code}/attack`, {
     method: 'POST', body: JSON.stringify({ playerId: state.playerId, targetId }),
+  });
+}
+
+export async function completeMultiplayerRound(payload) {
+  if (!state.room) return null;
+  return request(`/api/rooms/${state.room.code}/round-complete`, {
+    method: 'POST', body: JSON.stringify({ playerId: state.playerId, ...payload }),
   });
 }
 
