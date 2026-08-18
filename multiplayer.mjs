@@ -43,7 +43,7 @@ function connectRoom(room) {
   state.room = room;
   const stream = new EventSource(`/api/rooms/${room.code}/events?playerId=${encodeURIComponent(state.playerId)}`);
   state.roomStream = stream;
-  ['room', 'progress', 'finish'].forEach(eventName => stream.addEventListener(eventName, event => handleRoom(JSON.parse(event.data))));
+  ['room', 'progress', 'finish', 'leave'].forEach(eventName => stream.addEventListener(eventName, event => handleRoom(JSON.parse(event.data))));
   stream.onerror = () => state.callbacks.onConnection?.('reconnecting');
   handleRoom(room);
 }
@@ -142,6 +142,12 @@ export function leaveMultiplayer() {
   state.room = null;
   state.startedRoom = null;
   state.pendingProgress = null;
+}
+
+export function signalMultiplayerExit() {
+  if (!state.room && !state.matchStream) return;
+  const body = JSON.stringify({ playerId: state.playerId });
+  navigator.sendBeacon('/api/match/cancel', new Blob([body], { type: 'application/json' }));
 }
 
 export function multiplayerRoom() { return state.room; }

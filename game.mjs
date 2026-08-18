@@ -3,7 +3,7 @@ import { interviewStage } from './src/interview-stage.ts';
 import { audioSystem } from './src/audio-system.ts';
 import {
   configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
-  leaveMultiplayer, multiplayerRoom, quickMatch, sendProgress, setReady, setRoomSettings,
+  leaveMultiplayer, multiplayerRoom, quickMatch, sendProgress, setReady, setRoomSettings, signalMultiplayerExit,
 } from './multiplayer.mjs';
 
 const CONFIG = {
@@ -71,11 +71,14 @@ let lastCountdownSecond = null;
 let roundSequence = 0;
 let scoreAnimationId = 0;
 let feedbackUnlockTimer = 0;
+let feedbackAutoTimer = 0;
+let feedbackCountdownTimer = 0;
 let feedbackReady = false;
 let gameMode = 'single';
 let multiplayerStartTimer = 0;
 let customRules = null;
 let phaserDangerActive = false;
+const leftPlayerIds = new Set();
 
 function showScreen(name) {
   Object.entries(screens).forEach(([key, element]) => element.classList.toggle('hidden', key !== name));
@@ -142,11 +145,15 @@ function renderLobby(room) {
 
 function renderMultiplayerRoom(room) {
   renderLobby(room);
+  room.players.filter(player => player.left).forEach(player => {
+    if (!leftPlayerIds.has(player.playerId)) flash(`${player.nickname}님이 면접에서 나갔습니다`);
+    leftPlayerIds.add(player.playerId);
+  });
   const rivals = room.players.filter(player => !player.isMe);
   $('#opponent-hud').classList.toggle('hidden', gameMode !== 'multi' || rivals.length === 0);
   $('#opponent-list').innerHTML = rivals.map(player => `
-    <div class="opponent-row">
-      <div><strong>${player.nickname}</strong><small>Q${Math.max(1, player.round)}/10</small><b>${Math.round(player.score)}점</b></div>
+    <div class="opponent-row ${player.left ? 'left' : ''}">
+      <div><strong>${player.nickname}</strong><small>${player.left ? '나감' : `Q${Math.max(1, player.round)}/10`}</small><b>${Math.round(player.score)}점</b></div>
       <div class="opponent-track"><i style="width:${player.progress * 100}%"></i></div>
     </div>`).join('');
   if (!screens.result.classList.contains('hidden')) renderMatchResult(room);
@@ -157,7 +164,7 @@ function renderMatchResult(room) {
   const ranked = [...room.players].sort((a, b) => b.score - a.score);
   const mine = ranked.findIndex(player => player.isMe);
   panel.classList.remove('hidden');
-  panel.innerHTML = `<strong>${mine >= 0 ? `${mine + 1}위 / ${ranked.length}명` : '집계 중'}</strong>${ranked.map((player, index) => `<span>${index + 1}. ${player.nickname} · ${player.score.toFixed(1)}점${player.finished ? '' : ' (진행 중)'}</span>`).join('<br>')}`;
+  panel.innerHTML = `<strong>${mine >= 0 ? `${mine + 1}위 / ${ranked.length}명` : '집계 중'}</strong>${ranked.map((player, index) => `<span>${index + 1}. ${player.nickname} · ${player.score.toFixed(1)}점${player.left ? ' (나감)' : player.finished ? '' : ' (진행 중)'}</span>`).join('<br>')}`;
 }
 
 function scheduleMultiplayerStart(room) {
@@ -283,6 +290,8 @@ function beginGame() {
 async function beginRound() {
   const sequence = ++roundSequence;
   window.clearTimeout(feedbackUnlockTimer);
+  window.clearTimeout(feedbackAutoTimer);
+  window.clearInterval(feedbackCountdownTimer);
   feedbackReady = false;
   const [question, answer] = currentPair();
   committed = [];
@@ -360,6 +369,7 @@ function updateTimer() {
 function commitWord(rawWord) {
   if (roundClosed || !rawWord) return;
   const targets = splitWords(currentPair()[1]);
+  if (committed.length >= targets.length) return;
   const target = targets[committed.length] ?? '';
   const word = rawWord.trim();
   if (!word) return;
@@ -435,6 +445,7 @@ function finishRound(timedOut = false) {
   $('#max-combo-score').textContent = maxCombo;
   $('#speed-score').textContent = `+${score.speed.toFixed(1)}`;
   $('#next-button').innerHTML = round === 9 ? '최종 결과 보기 <span>→</span>' : '다음 질문 <span>→</span>';
+  $('#auto-next-hint').textContent = '결과 표시 중…';
   $('#next-button').disabled = true;
   feedbackReady = false;
   window.clearTimeout(feedbackUnlockTimer);
@@ -446,13 +457,31 @@ function finishRound(timedOut = false) {
       if (!roundClosed || $('#feedback-overlay').classList.contains('hidden')) return;
       feedbackReady = true;
       $('#next-button').disabled = false;
+      startFeedbackAutoAdvance();
     }, 850);
   }, 650);
   if (timedOut) flash('답변 시간이 종료되었습니다');
 }
 
+function startFeedbackAutoAdvance() {
+  let seconds = 4;
+  const label = round === 9 ? '최종 결과' : '다음 질문';
+  const render = () => {
+    $('#auto-next-hint').textContent = `${seconds}초 후 ${label}${round === 9 ? '로' : '으로'} 자동 진행`;
+    $('#next-button').innerHTML = `${label} · ${seconds} <span>→</span>`;
+  };
+  render();
+  feedbackCountdownTimer = window.setInterval(() => {
+    seconds -= 1;
+    if (seconds > 0) render();
+  }, 1000);
+  feedbackAutoTimer = window.setTimeout(nextRound, 4000);
+}
+
 function nextRound() {
   if (!feedbackReady) return;
+  window.clearTimeout(feedbackAutoTimer);
+  window.clearInterval(feedbackCountdownTimer);
   feedbackReady = false;
   $('#next-button').disabled = true;
   if (round >= 9) return showResults();
@@ -514,6 +543,7 @@ function nickname() {
 }
 
 async function enterMultiplayer(action) {
+  leftPlayerIds.clear();
   audioSystem.unlock();
   showScreen('lobby');
   renderLobby(null);
@@ -605,6 +635,11 @@ $('#next-button').addEventListener('click', nextRound);
 $('#submit-button').addEventListener('click', () => finishRound(false));
 $('#word-input').addEventListener('input', handleInput);
 $('#word-input').addEventListener('keydown', event => {
+  if (event.code === 'Space' && !event.isComposing && !event.currentTarget.value.trim()) {
+    event.preventDefault();
+    event.currentTarget.value = '';
+    return;
+  }
   if (event.key === 'Enter' && !event.isComposing) {
     event.preventDefault();
     finishRound(false);
@@ -619,6 +654,7 @@ document.addEventListener('keydown', event => {
     nextRound();
   }
 });
+window.addEventListener('pagehide', signalMultiplayerExit);
 $('#game-screen').addEventListener('click', event => {
   if (!roundClosed && !event.target.closest('button')) $('#word-input').focus();
 });

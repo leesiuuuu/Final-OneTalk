@@ -94,6 +94,34 @@ test('친구 방 생성 시 선택한 세부 규칙을 바로 적용한다', asy
   });
 });
 
+test('게임 시작 후 나간 참가자는 이탈 상태로 모든 플레이어에게 표시된다', async () => {
+  await withServer(async base => {
+    const owner = await post(base, '/api/rooms', { playerId: 'leave-owner', nickname: '남은사람', difficulty: 'startup' });
+    const code = owner.data.code;
+    await post(base, `/api/rooms/${code}/join`, { playerId: 'leave-guest', nickname: '나간사람', difficulty: 'startup' });
+    await post(base, `/api/rooms/${code}/ready`, { playerId: 'leave-owner', ready: true });
+    await post(base, `/api/rooms/${code}/ready`, { playerId: 'leave-guest', ready: true });
+    await post(base, '/api/match/cancel', { playerId: 'leave-guest' });
+
+    const updated = await post(base, `/api/rooms/${code}/progress`, { playerId: 'leave-owner', round: 2, progress: 0.2, score: 50 });
+    const departed = updated.data.players.find(player => player.playerId === 'leave-guest');
+    assert.equal(departed.left, true);
+    assert.equal(departed.finished, true);
+  });
+});
+
+test('대기실 방장이 나가면 다음 참가자가 방장을 이어받는다', async () => {
+  await withServer(async base => {
+    const owner = await post(base, '/api/rooms', { playerId: 'host-leave', nickname: '기존방장', difficulty: 'startup' });
+    const code = owner.data.code;
+    await post(base, `/api/rooms/${code}/join`, { playerId: 'next-host', nickname: '새방장', difficulty: 'startup' });
+    await post(base, '/api/match/cancel', { playerId: 'host-leave' });
+    const updated = await post(base, `/api/rooms/${code}/ready`, { playerId: 'next-host', ready: true });
+    assert.equal(updated.data.players.length, 1);
+    assert.equal(updated.data.players[0].isHost, true);
+  });
+});
+
 test('Hive 콜백 HMAC-SHA256 서명을 검증한다', () => {
   const body = Buffer.from('{"matchingInfos":[]}');
   const secret = 'callback-secret';

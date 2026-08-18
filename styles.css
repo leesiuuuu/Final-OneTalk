@@ -1018,6 +1018,9 @@ kbd {
 .opponent-track { height: 8px; margin-top: 8px; border: 2px solid var(--ink); background: #a9a18e; }
 .opponent-track i { display: block; width: 0; height: 100%; background: var(--red); transition: width .16s linear; }
 .opponent-hud b { color: var(--red); }
+.opponent-row.left { opacity: .48; filter: grayscale(1); }
+.opponent-row.left .opponent-track i { background: #77736d; }
+.opponent-row.left small { color: var(--red); font-weight: 700; }
 .match-result { width: min(580px, 90vw); margin: 18px auto; padding: 14px; border: 3px solid var(--ink); background: var(--cream); box-shadow: 5px 5px 0 var(--ink); }
 .match-result strong { display: block; margin-bottom: 5px; color: var(--red); font-size: 20px; }
 
@@ -1053,6 +1056,7 @@ kbd {
 .audio-panel input[type="range"] { width: 100%; accent-color: var(--red); cursor: pointer; }
 .audio-panel .secondary-button { min-height: 34px; margin-top: 12px; font-size: 9px; box-shadow: 3px 3px 0 var(--ink); }
 .audio-panel .sound-off { background: #77736d; color: white; }
+.auto-next-hint { display: block; margin: 14px 0 -16px; color: #b8b5d2; font-size: 9px; text-align: center; }
 
 .interviewer,
 .typing-panel,

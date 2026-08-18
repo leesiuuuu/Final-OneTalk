@@ -88,6 +88,7 @@ function publicRoom(room, viewerId) {
       progress: player.progress,
       score: player.score,
       finished: player.finished,
+      left: player.left,
       ready: player.ready,
       isHost: player.playerId === room.ownerId,
       isMe: player.playerId === viewerId,
@@ -127,7 +128,7 @@ function createRoom(owner, provider = 'local', requestedCode, kind = 'private', 
   const room = {
     code, provider, kind, ownerId: owner.playerId, difficulty: owner.difficulty, status: 'waiting', startAt: null,
     settings: safeRoomSettings(requestedSettings, defaults[owner.difficulty]),
-    players: new Map(), streams: new Map(), createdAt: Date.now(),
+    players: new Map(), streams: new Map(), disconnectTimers: new Map(), createdAt: Date.now(),
   };
   addPlayer(room, owner);
   rooms.set(code, room);
@@ -138,8 +139,9 @@ function addPlayer(room, input) {
   if (room.players.size >= 4 && !room.players.has(input.playerId)) throw new Error('방이 가득 찼습니다.');
   const player = room.players.get(input.playerId) ?? {
     playerId: input.playerId, nickname: input.nickname, round: 0, progress: 0,
-    score: 0, finished: false, ready: false,
+    score: 0, finished: false, left: false, ready: false,
   };
+  player.left = false;
   room.players.set(input.playerId, player);
   playerRooms.set(input.playerId, room.code);
   broadcast(room);
@@ -203,14 +205,38 @@ function cancelPlayer(playerId) {
   }
   const code = playerRooms.get(playerId);
   const room = code ? rooms.get(code) : null;
+  if (room) {
+    clearTimeout(room.disconnectTimers.get(playerId));
+    room.disconnectTimers.delete(playerId);
+  }
   if (room?.status === 'waiting') {
     room.players.delete(playerId);
     room.streams.get(playerId)?.forEach(res => res.end());
     room.streams.delete(playerId);
     if (room.players.size === 0) rooms.delete(code);
-    else broadcast(room);
+    else {
+      if (room.ownerId === playerId) room.ownerId = room.players.keys().next().value;
+      broadcast(room, 'leave');
+    }
+  } else if (room) {
+    const player = room.players.get(playerId);
+    if (player && !player.finished) {
+      player.left = true;
+      player.finished = true;
+      if ([...room.players.values()].every(item => item.finished)) room.status = 'finished';
+      broadcast(room, 'leave');
+    }
   }
   playerRooms.delete(playerId);
+}
+
+function scheduleDisconnect(room, playerId) {
+  clearTimeout(room.disconnectTimers.get(playerId));
+  const timer = setTimeout(() => {
+    room.disconnectTimers.delete(playerId);
+    if ((room.streams.get(playerId)?.size ?? 0) === 0) cancelPlayer(playerId);
+  }, 8000);
+  room.disconnectTimers.set(playerId, timer);
 }
 
 async function api(req, res, url) {
@@ -280,9 +306,15 @@ async function api(req, res, url) {
     const room = findRoom(match[1], playerId);
     openEventStream(req, res);
     const clients = room.streams.get(playerId) ?? new Set();
+    clearTimeout(room.disconnectTimers.get(playerId));
+    room.disconnectTimers.delete(playerId);
     clients.add(res); room.streams.set(playerId, clients);
     emit(res, 'room', publicRoom(room, playerId));
-    req.on('close', () => clients.delete(res));
+    req.on('close', () => {
+      clients.delete(res);
+      const player = room.players.get(playerId);
+      if (clients.size === 0 && player && !player.left && !player.finished) scheduleDisconnect(room, playerId);
+    });
     return;
   }
 
@@ -390,6 +422,7 @@ const cleanupTimer = setInterval(() => {
     const maxAge = room.status === 'finished' ? 30 * 60 * 1000 : 2 * 60 * 60 * 1000;
     if (now - room.createdAt <= maxAge) continue;
     room.streams.forEach(clients => clients.forEach(res => res.end()));
+    room.disconnectTimers.forEach(timer => clearTimeout(timer));
     room.players.forEach(player => playerRooms.delete(player.playerId));
     rooms.delete(code);
   }
