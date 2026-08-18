@@ -1,9 +1,11 @@
+const tabPlayerId = sessionStorage.getItem('interview-player-id') || `p_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`;
+sessionStorage.setItem('interview-player-id', tabPlayerId);
+
 const state = {
-  playerId: localStorage.getItem('interview-player-id') || `p_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`,
+  playerId: tabPlayerId,
   nickname: '', room: null, roomStream: null, matchStream: null, callbacks: {}, startedRoom: null,
   lastProgressAt: 0, pendingProgress: null, progressTimer: 0,
 };
-localStorage.setItem('interview-player-id', state.playerId);
 
 async function request(path, options = {}) {
   const response = await fetch(path, {

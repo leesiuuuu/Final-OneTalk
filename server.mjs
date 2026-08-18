@@ -400,7 +400,8 @@ async function api(req, res, url) {
     }
     if (!quickQueue.some(item => item.playerId === player.playerId)) quickQueue.push({ ...player, queuedAt: Date.now() });
     scheduleQuickMatch(player.difficulty);
-    return sendJson(res, 202, { waiting: true, provider: 'local', playerId: player.playerId });
+    const waitingCount = quickQueue.filter(item => item.difficulty === player.difficulty).length;
+    return sendJson(res, 202, { waiting: true, waitingCount, provider: 'local', playerId: player.playerId });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/match/events') {

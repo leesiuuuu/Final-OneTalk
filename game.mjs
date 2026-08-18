@@ -683,6 +683,12 @@ async function enterMultiplayer(action) {
   try {
     const room = await action();
     if (room?.code) renderLobby(room);
+    else if (room?.waiting) {
+      const waitingCount = Math.max(1, Number(room.waitingCount) || 1);
+      $('#lobby-status').innerHTML = waitingCount >= 2
+        ? '상대와 연결 중입니다<span class="waiting-dots">...</span>'
+        : '현재 대기 1명 · 다른 탭이나 친구가 빠른 매칭에 들어오면 시작됩니다<span class="waiting-dots">...</span>';
+    }
   } catch (error) {
     leaveMultiplayer();
     showScreen('start');

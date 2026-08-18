@@ -195,6 +195,28 @@ test('모든 참가자가 답변을 마쳐야 라운드 중간 점검으로 전�
   });
 });
 
+test('빠른 매칭은 서로 다른 두 참가자를 같은 방에 연결한다', async () => {
+  await withServer(async base => {
+    const first = await post(base, '/api/match/quick', { playerId: 'quick-one', nickname: '빠른1', difficulty: 'sme' });
+    const second = await post(base, '/api/match/quick', { playerId: 'quick-two', nickname: '빠른2', difficulty: 'sme' });
+    assert.equal(first.status, 202);
+    assert.equal(first.data.waitingCount, 1);
+    assert.equal(second.data.waitingCount, 2);
+    await new Promise(resolve => setTimeout(resolve, 1900));
+
+    const eventResponse = await fetch(`${base}/api/match/events?playerId=quick-one`);
+    const reader = eventResponse.body.getReader();
+    const { value } = await reader.read();
+    await reader.cancel();
+    const event = new TextDecoder().decode(value);
+    assert.match(event, /event: matched/);
+    const payload = JSON.parse(event.match(/data: (.+)/)[1]);
+    assert.equal(payload.kind, 'quick');
+    assert.equal(payload.status, 'starting');
+    assert.equal(payload.players.length, 2);
+  });
+});
+
 test('Hive 콜백 HMAC-SHA256 서명을 검증한다', () => {
   const body = Buffer.from('{"matchingInfos":[]}');
   const secret = 'callback-secret';
