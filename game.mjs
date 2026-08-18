@@ -642,6 +642,9 @@ $('#word-input').addEventListener('keydown', event => {
   }
   if (event.key === 'Enter' && !event.isComposing) {
     event.preventDefault();
+    // 제출에 사용한 Enter가 문서 단축키까지 버블링해 결과 화면을
+    // 곧바로 넘기는 일을 막는다.
+    event.stopPropagation();
     finishRound(false);
   }
 });
