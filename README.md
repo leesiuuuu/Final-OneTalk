@@ -46,7 +46,7 @@ npm start
 
 ### 무료 AI 질문 생성
 
-Pollinations에서 무료 API 키를 발급받아 Railway Variables 또는 로컬 `.env`의 `POLLINATIONS_API_KEY`에 저장하면 친구 방 규칙에서 AI 면접 문장을 선택할 수 있습니다. 생성 중에는 모든 참가자에게 로딩 상태가 표시되며, 키는 브라우저로 전달되지 않습니다.
+Groq Console에서 무료 API 키를 발급받아 Railway Variables 또는 로컬 `.env`의 `GROQ_API_KEY`에 저장하면 친구 방 규칙에서 `llama-3.3-70b-versatile` 기반 AI 면접 문장을 선택할 수 있습니다. 생성 중에는 모든 참가자에게 로딩 상태가 표시되며, 키는 브라우저로 전달되지 않습니다. 무료 플랜 한도를 초과하거나 생성에 실패하면 기존 면접 문장으로 자동 시작합니다.
 
 ## Hive 연결
 

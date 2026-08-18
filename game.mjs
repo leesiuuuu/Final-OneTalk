@@ -816,5 +816,5 @@ previewMultiplayerSetup();
 fetch('/api/config').then(response => response.json()).then(config => {
   aiQuestionsAvailable = Boolean(config.aiQuestionsAvailable);
   $('#setup-use-ai').disabled = !aiQuestionsAvailable;
-  $('#room-ai-hint').textContent = aiQuestionsAvailable ? '무료 AI API로 질문·답변 생성' : 'Railway에 POLLINATIONS_API_KEY 연결 필요';
+  $('#room-ai-hint').textContent = aiQuestionsAvailable ? 'Groq Llama 3.3 70B로 질문·답변 생성' : 'Railway에 GROQ_API_KEY 연결 필요';
 }).catch(() => {});

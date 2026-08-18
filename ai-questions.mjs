@@ -1,4 +1,5 @@
-const ENDPOINT = 'https://gen.pollinations.ai/v1/chat/completions';
+const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+const MODEL = 'llama-3.3-70b-versatile';
 
 function extractJson(text) {
   const source = String(text ?? '').replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
@@ -15,13 +16,19 @@ function normalizePair(item, maxWords) {
   return [question, answer];
 }
 
+export function parseInterviewQuestions(text, roundCount, maxWords) {
+  const items = extractJson(text);
+  if (!Array.isArray(items) || items.length < roundCount) throw new Error('AI 질문 수가 부족합니다.');
+  return items.slice(0, roundCount).map(item => normalizePair(item, maxWords));
+}
+
 export function aiQuestionsAvailable() {
-  return Boolean(process.env.POLLINATIONS_API_KEY);
+  return Boolean(process.env.GROQ_API_KEY);
 }
 
 export async function generateInterviewQuestions({ roundCount, maxWords, difficulty }) {
-  const apiKey = process.env.POLLINATIONS_API_KEY;
-  if (!apiKey) throw new Error('POLLINATIONS_API_KEY가 설정되지 않았습니다.');
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('GROQ_API_KEY가 설정되지 않았습니다.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 18000);
   const prompt = `한국어 취업 면접 타자 게임용 질문과 모범 답변을 ${roundCount}개 생성해 주세요.
@@ -32,18 +39,15 @@ JSON 배열만 반환하세요: [{"question":"...","answer":"..."}]`;
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'openai-fast', temperature: 0.8,
+        model: MODEL, temperature: 0.75, max_tokens: 1800,
         messages: [{ role: 'user', content: prompt }],
       }),
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`AI API 오류 (${response.status})`);
     const payload = await response.json();
-    const items = extractJson(payload?.choices?.[0]?.message?.content);
-    if (!Array.isArray(items) || items.length < roundCount) throw new Error('AI 질문 수가 부족합니다.');
-    return items.slice(0, roundCount).map(item => normalizePair(item, maxWords));
+    return parseInterviewQuestions(payload?.choices?.[0]?.message?.content, roundCount, maxWords);
   } finally {
     clearTimeout(timeout);
   }
 }
-
