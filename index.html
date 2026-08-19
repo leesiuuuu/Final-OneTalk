@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#10141f">
   <title>Intalk: 최종 한마디 — 면접 타자 게임</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="shortcut icon" href="./favicon.svg">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css">
   <link rel="stylesheet" href="./styles.css?v=16">
 </head>
@@ -115,7 +117,7 @@
           <button class="secondary-button" type="submit">전송</button>
         </form>
         <p id="lobby-status" class="lobby-status">매칭 서버에 접속하고 있습니다<span class="waiting-dots">...</span></p>
-        <button id="ready-button" class="primary-button hidden">준비 완료 <span>✓</span></button>
+        <button id="ready-button" class="primary-button ready-action hidden" aria-pressed="false"><div><strong>준비하기</strong><small>방장에게 시작할 준비가 됐다고 알립니다</small></div><b>✓</b></button>
         <button id="host-start-button" class="primary-button hidden">면접 레이스 시작 <span>→</span></button>
         <button id="cancel-match-button" class="secondary-button wide">매칭 취소</button>
       </div>

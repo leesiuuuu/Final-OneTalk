@@ -129,7 +129,9 @@ function renderLobby(room) {
   $('#lobby-players').innerHTML = Array.from({ length: 4 }, (_, index) => {
     const player = players[index];
     if (!player) return `<div class="lobby-player waiting"><span>SLOT ${index + 1}</span><strong>대기 중</strong></div>`;
-    return `<div class="lobby-player ${player.ready ? 'ready' : ''}" data-player-id="${player.playerId}"><span>${player.isMe ? 'YOU' : player.isHost ? 'HOST' : `PLAYER ${index + 1}`}</span><strong>${player.nickname}</strong><small>${player.isHost ? ' 방장' : player.ready ? ' READY' : ' 준비 전'}</small></div>`;
+    const status = player.isHost ? '방장 · 시작 담당' : player.ready ? '준비 완료' : '준비 필요';
+    const indicator = player.isHost ? 'H' : player.ready ? '✓' : '…';
+    return `<div class="lobby-player ${player.isHost ? 'host' : ''} ${player.ready ? 'ready' : ''} ${player.isMe ? 'me' : ''}" data-player-id="${player.playerId}"><span class="player-slot">${player.isMe ? 'YOU' : player.isHost ? 'HOST' : `PLAYER ${index + 1}`}</span><i class="ready-indicator">${indicator}</i><strong>${player.nickname}</strong><small class="player-state">${status}</small></div>`;
   }).join('');
   if (!room) return;
   selectedDifficulty = room.difficulty;
@@ -152,8 +154,13 @@ function renderLobby(room) {
   const guestPlayers = players.filter(player => !player.isHost);
   const guestsReady = guestPlayers.length > 0 && guestPlayers.every(player => player.ready);
   $('#ready-button').classList.toggle('hidden', room.provider !== 'local' || isStarting || isGenerating || Boolean(me?.isHost));
-  $('#ready-button').disabled = false;
-  $('#ready-button').innerHTML = me?.ready ? '준비 취소 <span>↩</span>' : '준비 완료 <span>✓</span>';
+  const readyButton = $('#ready-button');
+  readyButton.disabled = false;
+  readyButton.classList.toggle('is-ready', Boolean(me?.ready));
+  readyButton.setAttribute('aria-pressed', String(Boolean(me?.ready)));
+  readyButton.innerHTML = me?.ready
+    ? '<div><strong>준비 완료</strong><small>방장의 시작을 기다리는 중 · 클릭하면 취소</small></div><b>✓</b>'
+    : '<div><strong>준비하기</strong><small>방장에게 시작할 준비가 됐다고 알립니다</small></div><b>→</b>';
   $('#host-start-button').classList.toggle('hidden', room.kind !== 'private' || !me?.isHost || isStarting || isGenerating);
   $('#host-start-button').disabled = players.length < 2 || !guestsReady;
   $('#matching-loader').classList.toggle('loading', !isStarting);
