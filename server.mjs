@@ -302,9 +302,6 @@ function updatePlayer(room, playerId, input) {
   if (input.finished) player.finished = true;
   if ([...room.players.values()].every(item => item.finished)) {
     room.status = 'finished';
-    clearTimeout(room.destroyTimer);
-    room.destroyTimer = setTimeout(() => destroyRoom(room, '완료된 면접 방이 정리되었습니다.'), 90 * 1000);
-    room.destroyTimer.unref?.();
   }
   broadcast(room, input.finished ? 'finish' : 'progress');
 }
@@ -336,14 +333,11 @@ function cancelPlayer(playerId) {
     }
   } else if (room) {
     const player = room.players.get(playerId);
-    if (player && !player.finished) {
+    if (player) {
       player.left = true;
       player.finished = true;
       if ([...room.players.values()].every(item => item.finished)) {
         room.status = 'finished';
-        clearTimeout(room.destroyTimer);
-        room.destroyTimer = setTimeout(() => destroyRoom(room, '완료된 면접 방이 정리되었습니다.'), 90 * 1000);
-        room.destroyTimer.unref?.();
       }
       broadcast(room, 'leave');
       maybeStartRoundReview(room);
@@ -482,10 +476,11 @@ async function api(req, res, url) {
   if (req.method === 'POST' && match) {
     const input = JSON.parse((await readBody(req)).toString() || '{}');
     const room = findRoom(match[1], input.playerId);
-    if (room.status !== 'waiting' && room.status !== 'generating') throw new Error('대기실에서만 채팅할 수 있습니다.');
+    const player = room.players.get(input.playerId);
+    const canChat = ['waiting', 'generating', 'finished'].includes(room.status) || Boolean(player?.finished);
+    if (!canChat) throw new Error('대기실 또는 결과 화면에서만 채팅할 수 있습니다.');
     const message = String(input.message ?? '').replace(/[<>&"']/g, '').trim().slice(0, 80);
     if (!message) throw new Error('메시지를 입력해 주세요.');
-    const player = room.players.get(input.playerId);
     room.latestChat = { id: ++room.chatSerial, playerId: input.playerId, nickname: player.nickname, message, at: Date.now() };
     broadcast(room, 'chat');
     const response = publicRoom(room, input.playerId);

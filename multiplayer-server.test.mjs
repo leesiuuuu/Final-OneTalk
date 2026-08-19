@@ -162,6 +162,11 @@ test('대기실 채팅과 게임 중 선점 어절을 서버가 최초 1명만 �
     const late = await post(base, `/api/rooms/${code}/sprint-claim`, { playerId: 'battle-guest', round: 0, wordIndex: 2 });
     assert.equal(late.status, 200);
     assert.equal(late.data.latestSprint.winnerId, 'battle-owner');
+
+    await post(base, `/api/rooms/${code}/finish`, { playerId: 'battle-owner', round: 10, progress: 1, score: 100 });
+    const resultChat = await post(base, `/api/rooms/${code}/chat`, { playerId: 'battle-owner', message: '수고하셨습니다!' });
+    assert.equal(resultChat.status, 200);
+    assert.equal(resultChat.data.latestChat.message, '수고하셨습니다!');
   });
 });
 

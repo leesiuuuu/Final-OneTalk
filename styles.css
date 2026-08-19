@@ -1069,6 +1069,14 @@ body.under-attack .typing-panel { animation: pressureShake .5s ease-out; }
 @keyframes pressureShake { 20% { transform: translateX(-5px); filter: hue-rotate(25deg); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } }
 .match-result { width: min(580px, 90vw); margin: 18px auto; padding: 14px; border: 3px solid var(--ink); background: var(--cream); box-shadow: 5px 5px 0 var(--ink); }
 .match-result strong { display: block; margin-bottom: 5px; color: var(--red); font-size: 20px; }
+.result-chat { width: min(580px, 90vw); margin: 14px auto 18px; padding: 12px; border: 3px solid var(--ink); background: #e9dfc5; box-shadow: 5px 5px 0 var(--ink); text-align: left; }
+.result-chat-heading { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 9px; font-size: 9px; }
+.result-chat-heading span { color: #706b5e; }
+.result-chat-message { min-height: 42px; padding: 9px 10px; border: 2px dashed #918875; background: var(--cream); font-size: 10px; line-height: 1.5; }
+.result-chat-message strong { color: var(--red); }
+.result-chat-form { display: grid; grid-template-columns: 1fr 84px; gap: 8px; margin-top: 9px; }
+.result-chat-form input { min-width: 0; height: 42px; padding: 0 10px; border: 3px solid var(--ink); background: white; color: var(--ink); font: inherit; }
+.result-chat-form .secondary-button { min-height: 42px; }
 
 @media (max-width: 620px) {
   .opponent-hud { gap: 7px; width: calc(100% - 16px); margin-top: 8px; padding: 7px; }
@@ -1077,6 +1085,7 @@ body.under-attack .typing-panel { animation: pressureShake .5s ease-out; }
   .lobby-players { grid-template-columns: 1fr 1fr; }
   .multiplayer-controls label { grid-template-columns: 1fr; gap: 6px; text-align: left; }
   .multiplayer-rule-setup label { grid-template-columns: 1fr 64px 20px; align-items: center; }
+  .result-chat-heading { flex-direction: column; gap: 3px; }
 }
 
 /* Start controls and sound mixer -------------------------------------- */

@@ -83,6 +83,7 @@ let customQuestions = null;
 let phaserDangerActive = false;
 let lastSprintId = 0;
 let aiQuestionsAvailable = false;
+let resultChatTimer = 0;
 const leftPlayerIds = new Set();
 const chatBubbleTimers = new Map();
 
@@ -201,9 +202,23 @@ function showLobbyChat(chat) {
   }, 4200));
 }
 
+function showResultChat(chat) {
+  if (!chat || screens.result.classList.contains('hidden')) return;
+  window.clearTimeout(resultChatTimer);
+  const message = $('#result-chat-message');
+  message.innerHTML = '';
+  const sender = document.createElement('strong');
+  sender.textContent = `${chat.nickname}: `;
+  message.append(sender, document.createTextNode(chat.message));
+  resultChatTimer = window.setTimeout(() => {
+    message.textContent = '새로운 메시지를 기다리는 중…';
+  }, 5200);
+}
+
 function renderMultiplayerRoom(room, eventName = 'room') {
   if (eventName === 'chat') {
     showLobbyChat(room.latestChat);
+    showResultChat(room.latestChat);
     return;
   }
   renderLobby(room);
@@ -257,14 +272,15 @@ function showSynchronizedRoundReview(room) {
       stopMultiplayerReviewTimer();
       return;
     }
-    const seconds = Math.max(1, Math.ceil(((currentRoundState.nextRoundAt ?? Date.now()) - Date.now()) / 1000));
+    const remainingSeconds = Math.max(0, ((currentRoundState.nextRoundAt ?? Date.now()) - Date.now()) / 1000);
     const totalRounds = Number(currentRoom.settings?.roundCount) || roundCount();
     const label = reviewRoundIndex >= totalRounds - 1 ? '최종 결과' : '다음 라운드';
-    $('#auto-next-hint').textContent = `모든 답변 확인 완료 · ${seconds}초 후 ${label}`;
-    $('#next-button').innerHTML = `${label} · ${seconds} <span>→</span>`;
+    const countdownText = remainingSeconds > 0 ? `${remainingSeconds.toFixed(1)}초 후 ${label}` : `${label} 전환 대기 중`;
+    $('#auto-next-hint').textContent = `모든 답변 확인 완료 · ${countdownText}`;
+    $('#next-button').innerHTML = `${label} · ${remainingSeconds.toFixed(1)} <span>→</span>`;
   };
   updateCountdown();
-  multiplayerReviewTimer = window.setInterval(updateCountdown, 250);
+  multiplayerReviewTimer = window.setInterval(updateCountdown, 100);
 }
 
 function advanceSynchronizedRound(room) {
@@ -625,18 +641,20 @@ function finishRound(timedOut = false) {
 }
 
 function startFeedbackAutoAdvance() {
-  let seconds = 4;
+  const advanceAt = performance.now() + 4000;
   const label = round === roundCount() - 1 ? '최종 결과' : '다음 질문';
   const render = () => {
+    const remainingMs = Math.max(0, advanceAt - performance.now());
+    const seconds = Math.ceil(remainingMs / 1000);
     $('#auto-next-hint').textContent = `${seconds}초 후 ${label}${round === roundCount() - 1 ? '로' : '으로'} 자동 진행`;
     $('#next-button').innerHTML = `${label} · ${seconds} <span>→</span>`;
+    if (remainingMs <= 0) {
+      window.clearInterval(feedbackCountdownTimer);
+      feedbackAutoTimer = window.setTimeout(nextRound, 200);
+    }
   };
   render();
-  feedbackCountdownTimer = window.setInterval(() => {
-    seconds -= 1;
-    if (seconds > 0) render();
-  }, 1000);
-  feedbackAutoTimer = window.setTimeout(nextRound, 4000);
+  feedbackCountdownTimer = window.setInterval(render, 100);
 }
 
 function nextRound() {
@@ -677,6 +695,9 @@ function showResults() {
     <div title="${item.totalScore.toFixed(1)}점">
       <span>Q${index + 1}</span><i style="height:${Math.max(4, item.accuracy * 100)}%"></i>
     </div>`).join('');
+  $('#result-chat').classList.toggle('hidden', gameMode !== 'multi');
+  $('#result-chat-message').textContent = '새로운 메시지를 기다리는 중…';
+  $('#restart-button').innerHTML = gameMode === 'multi' ? '방 나가기 <span>→</span>' : '다시 지원하기 <span>↻</span>';
   if (gameMode === 'multi') {
     const room = multiplayerRoom();
     if (room) renderMatchResult(room);
@@ -854,6 +875,15 @@ $('#lobby-chat-form').addEventListener('submit', async event => {
   try { await sendLobbyChat(message); }
   catch (error) { flash(error.message); }
 });
+$('#result-chat-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = $('#result-chat-input');
+  const message = input.value.trim();
+  if (!message) return;
+  input.value = '';
+  try { await sendLobbyChat(message); }
+  catch (error) { flash(error.message); }
+});
 $('#copy-room-code').addEventListener('click', async () => {
   await navigator.clipboard.writeText(multiplayerRoom()?.code ?? '');
   flash('초대 코드를 복사했습니다');
@@ -871,7 +901,7 @@ $('#quit-button').addEventListener('click', () => {
   showScreen('start');
 });
 $('#restart-button').addEventListener('click', () => {
-  leaveMultiplayer();
+  if (gameMode === 'multi') leaveMultiplayer();
   showScreen('start');
 });
 $('#next-button').addEventListener('click', nextRound);
