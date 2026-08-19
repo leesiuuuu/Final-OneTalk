@@ -23,3 +23,13 @@ test('Groq 응답의 질문 수가 부족하면 기본 문장 폴백을 위해 �
   );
 });
 
+test('최대 5어절에서는 자연스러운 4~5어절 답변을 허용한다', () => {
+  const response = `[
+    {"question":"강점은 무엇인가요?","answer":"문제를 끝까지 책임지고 해결합니다"},
+    {"question":"지원 동기는 무엇인가요?","answer":"고객과 함께 성장하고 싶습니다"},
+    {"question":"마지막 한마디는?","answer":"결과로 제 가능성을 증명하겠습니다"}
+  ]`;
+  const questions = parseInterviewQuestions(response, 3, 5);
+  assert.equal(questions.length, 3);
+  assert.ok(questions.every(([, answer]) => answer.split(/\s+/u).length <= 5));
+});

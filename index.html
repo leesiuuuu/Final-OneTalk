@@ -64,7 +64,7 @@
             <p>최대 문항 시간 <strong id="setup-time-preview">24.0초</strong></p>
           </fieldset>
           <div class="room-code-row">
-            <input id="room-code-input" maxlength="5" placeholder="초대 코드" aria-label="초대 코드">
+            <input id="room-code-input" maxlength="5" placeholder="초대 코드" aria-label="초대 코드" autocapitalize="characters" autocomplete="off" spellcheck="false">
             <button id="join-room-button" class="secondary-button">참가</button>
           </div>
           <button id="create-room-button" class="secondary-button wide">이 설정으로 친구 방 만들기</button>
@@ -167,6 +167,7 @@
 
       <div id="round-countdown-overlay" class="round-countdown-overlay hidden" aria-live="assertive">
         <p id="countdown-label">면접 시작까지</p>
+        <em id="countdown-event" class="countdown-event hidden"></em>
         <strong id="round-countdown-value">3</strong>
       </div>
 

@@ -836,6 +836,9 @@ kbd {
   -webkit-text-stroke: 4px var(--ink);
   text-shadow: 8px 8px 0 var(--red);
 }
+.countdown-event { display: block; max-width: min(620px, 88vw); margin: 14px 0 -2px; padding: 11px 16px; border: 4px solid var(--ink); background: var(--lime); color: var(--ink); box-shadow: 7px 7px 0 var(--red); font-style: normal; font-size: clamp(12px, 2vw, 20px); font-weight: 700; letter-spacing: .04em; animation: eventRulePulse .7s steps(2) infinite alternate; }
+.countdown-event.hidden { display: none; }
+@keyframes eventRulePulse { to { background: var(--cyan); transform: scale(1.025); } }
 .round-countdown-overlay .countdown-pop {
   animation: roundCountdownPop .52s cubic-bezier(.2, .75, .25, 1) both;
 }
@@ -959,6 +962,7 @@ kbd {
 .multiplayer-controls { display: grid; gap: 10px; margin: 14px 0; padding: 14px; border: 3px solid var(--ink); background: #e9dfc5; }
 .multiplayer-controls label { display: grid; grid-template-columns: 80px 1fr; align-items: center; font-size: 12px; font-weight: 700; }
 .multiplayer-controls input { width: 100%; min-width: 0; height: 38px; border: 3px solid var(--ink); border-radius: 0; padding: 0 10px; background: var(--cream); color: var(--ink); font: inherit; outline: none; }
+#room-code-input { text-transform: uppercase; letter-spacing: .18em; font-weight: 700; }
 .multiplayer-controls input:focus { box-shadow: inset 0 0 0 2px var(--red); }
 .multiplayer-controls input.invalid,
 .room-rules input.invalid { border-color: var(--red); background: #ffe2d8; box-shadow: inset 0 0 0 2px #ff5a4638; }

@@ -351,7 +351,7 @@ function scheduleMultiplayerStart(room) {
   customQuestions = room.questions ?? null;
   lastSprintId = room.latestSprint?.id ?? 0;
   audioSystem.matchFound();
-  const countdownLength = 2800;
+  const countdownLength = 3000;
   const serverStartInMs = Number(room.startInMs);
   const preciseStartInMs = serverDelayUntil(room.startAt);
   const delay = Math.max(0, (room.startAt != null
@@ -442,10 +442,13 @@ function wait(milliseconds) {
   return new Promise(resolve => window.setTimeout(resolve, milliseconds));
 }
 
-function showRoundCountdown(value, label = '면접 시작까지') {
+function showRoundCountdown(value, label = '면접 시작까지', eventMessage = '') {
   const overlay = $('#round-countdown-overlay');
   const number = $('#round-countdown-value');
+  const event = $('#countdown-event');
   $('#countdown-label').textContent = label;
+  event.textContent = eventMessage;
+  event.classList.toggle('hidden', !eventMessage);
   number.textContent = value;
   number.classList.remove('countdown-pop');
   void number.offsetWidth;
@@ -454,16 +457,18 @@ function showRoundCountdown(value, label = '면접 시작까지') {
 }
 
 async function runRoundCountdown(sequence) {
+  const roundEvent = multiplayerRoundEvent();
+  const eventMessage = roundEvent ? `EVENT RULE · ${roundEvent.message}` : '';
   for (const value of ['3', '2', '1']) {
     if (sequence !== roundSequence) return false;
-    showRoundCountdown(value);
+    showRoundCountdown(value, '면접 시작까지', eventMessage);
     audioSystem.countdown(value === '1');
-    await wait(750);
+    await wait(850);
   }
   if (sequence !== roundSequence) return false;
-  showRoundCountdown('START!', '답변을 시작하세요');
+  showRoundCountdown('START!', '답변을 시작하세요', eventMessage);
   audioSystem.start();
-  await wait(550);
+  await wait(450);
   return sequence === roundSequence;
 }
 
@@ -529,8 +534,6 @@ async function beginRound() {
   $('#submit-button').disabled = false;
   endAt = performance.now() + duration * 1000;
   roundStartedAt = performance.now();
-  const roundEvent = multiplayerRoundEvent();
-  if (roundEvent) showRaceEvent(roundEvent.message, 'event');
   $('#word-input').focus();
   timerId = requestAnimationFrame(tick);
 }
@@ -813,6 +816,10 @@ $$('.difficulty-option').forEach(button => button.addEventListener('click', () =
 }));
 
 $('#nickname-input').value = localStorage.getItem('interview-nickname') || '';
+$('#room-code-input').addEventListener('input', event => {
+  const input = event.currentTarget;
+  input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5);
+});
 $$('.mode-tab').forEach(button => button.addEventListener('click', () => setMode(button.dataset.mode)));
 $('#start-button').addEventListener('click', () => {
   if (gameMode === 'single') beginGame();
