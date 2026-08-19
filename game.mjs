@@ -86,6 +86,11 @@ let aiQuestionsAvailable = false;
 const leftPlayerIds = new Set();
 const chatBubbleTimers = new Map();
 
+function stopMultiplayerReviewTimer() {
+  window.clearInterval(multiplayerReviewTimer);
+  multiplayerReviewTimer = 0;
+}
+
 function showScreen(name) {
   Object.entries(screens).forEach(([key, element]) => element.classList.toggle('hidden', key !== name));
   const active = screens[name];
@@ -227,8 +232,10 @@ function renderMultiplayerRoom(room, eventName = 'room') {
 
 function showSynchronizedRoundReview(room) {
   if (gameMode !== 'multi' || screens.game.classList.contains('hidden')) return;
+  stopMultiplayerReviewTimer();
   window.clearInterval(feedbackCountdownTimer);
   window.clearTimeout(feedbackAutoTimer);
+  const reviewRoundIndex = room.roundState.index;
   const ranked = [...room.players].filter(player => !player.left).sort((a, b) => b.score - a.score);
   const panel = $('#round-review-panel');
   panel.classList.remove('hidden');
@@ -237,9 +244,15 @@ function showSynchronizedRoundReview(room) {
   feedbackReady = false;
   $('#next-button').disabled = true;
   const updateCountdown = () => {
-    const seconds = Math.max(1, Math.ceil(((room.roundState.nextRoundAt ?? Date.now()) - Date.now()) / 1000));
-    const totalRounds = Number(room.settings?.roundCount) || roundCount();
-    const label = room.roundState.index >= totalRounds - 1 ? '최종 결과' : '다음 라운드';
+    const currentRoom = multiplayerRoom();
+    const currentRoundState = currentRoom?.roundState;
+    if (currentRoundState?.phase !== 'review' || currentRoundState.index !== reviewRoundIndex) {
+      stopMultiplayerReviewTimer();
+      return;
+    }
+    const seconds = Math.max(1, Math.ceil(((currentRoundState.nextRoundAt ?? Date.now()) - Date.now()) / 1000));
+    const totalRounds = Number(currentRoom.settings?.roundCount) || roundCount();
+    const label = reviewRoundIndex >= totalRounds - 1 ? '최종 결과' : '다음 라운드';
     $('#auto-next-hint').textContent = `모든 답변 확인 완료 · ${seconds}초 후 ${label}`;
     $('#next-button').innerHTML = `${label} · ${seconds} <span>→</span>`;
   };
@@ -248,7 +261,7 @@ function showSynchronizedRoundReview(room) {
 }
 
 function advanceSynchronizedRound(room) {
-  window.clearInterval(multiplayerReviewTimer);
+  stopMultiplayerReviewTimer();
   if (gameMode !== 'multi' || screens.game.classList.contains('hidden')) return;
   if (room.roundState.phase === 'final') {
     showResults();
