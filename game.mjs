@@ -141,9 +141,12 @@ function renderLobby(room) {
   $('#lobby-players').innerHTML = Array.from({ length: 4 }, (_, index) => {
     const player = players[index];
     if (!player) return `<div class="lobby-player waiting"><span>SLOT ${index + 1}</span><strong>대기 중</strong></div>`;
-    const status = player.left ? '방에서 나감' : isPostGame ? '결과 확인 완료' : player.isHost ? '방장 · 시작 담당' : player.ready ? '준비 완료' : '준비 필요';
-    const indicator = player.left ? '×' : isPostGame ? '✓' : player.isHost ? 'H' : player.ready ? '✓' : '…';
-    return `<div class="lobby-player ${player.isHost ? 'host' : ''} ${player.ready && !isPostGame ? 'ready' : ''} ${player.isMe ? 'me' : ''}" data-player-id="${player.playerId}"><span class="player-slot">${player.isMe ? 'YOU' : player.isHost ? 'HOST' : `PLAYER ${index + 1}`}</span><i class="ready-indicator">${indicator}</i><strong>${player.nickname}</strong><small class="player-state">${status}</small></div>`;
+    const status = player.left ? '방에서 나감' : isPostGame
+      ? (player.isHost ? '방장 · 결과 확인 완료' : '게스트 · 결과 확인 완료')
+      : player.isHost ? '방장 · 시작 담당' : player.ready ? '준비 완료' : '준비 필요';
+    const indicator = player.left ? '×' : player.isHost ? 'H' : isPostGame ? '✓' : player.ready ? '✓' : '…';
+    const slot = player.isMe ? (player.isHost ? 'YOU · HOST' : 'YOU · GUEST') : player.isHost ? 'HOST' : `PLAYER ${index + 1}`;
+    return `<div class="lobby-player ${player.isHost ? 'host' : ''} ${player.ready && !isPostGame ? 'ready' : ''} ${player.isMe ? 'me' : ''}" data-player-id="${player.playerId}"><span class="player-slot">${slot}</span><i class="ready-indicator">${indicator}</i><strong>${player.nickname}</strong><small class="player-state">${status}</small></div>`;
   }).join('');
   if (!room) return;
   selectedDifficulty = room.difficulty;
@@ -210,7 +213,7 @@ function renderResultChatPlayers(room) {
   container.innerHTML = room.players.map(player => `
     <div class="result-chat-player ${player.isMe ? 'me' : ''} ${player.left ? 'left' : ''}" data-player-id="${player.playerId}">
       <i class="result-chat-avatar" aria-hidden="true"></i>
-      <strong>${player.nickname}${player.isMe ? ' · 나' : ''}</strong>
+      <strong>${player.nickname}${player.isHost ? ' · 방장' : ''}${player.isMe ? ' · 나' : ''}</strong>
     </div>`).join('');
 }
 

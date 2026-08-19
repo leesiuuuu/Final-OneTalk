@@ -167,6 +167,7 @@ test('대기실 채팅과 게임 중 선점 어절을 서버가 최초 1명만 �
     const resultChat = await post(base, `/api/rooms/${code}/chat`, { playerId: 'battle-owner', message: '수고하셨습니다!' });
     assert.equal(resultChat.status, 200);
     assert.equal(resultChat.data.latestChat.message, '수고하셨습니다!');
+    assert.equal(resultChat.data.players.find(player => player.isMe).isHost, true);
   });
 });
 
