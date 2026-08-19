@@ -43,6 +43,7 @@ test('개인 방은 최대 4명이 참가하고 게스트 준비 후 방장이 �
     const started = await post(base, `/api/rooms/${code}/start`, { playerId: 'owner4' });
     assert.equal(started.data.status, 'starting');
     assert.ok(started.data.startAt > Date.now());
+    assert.ok(started.data.startInMs > 4000);
   });
 });
 
@@ -168,6 +169,20 @@ test('대기실 채팅과 게임 중 선점 어절을 서버가 최초 1명만 �
     assert.equal(resultChat.status, 200);
     assert.equal(resultChat.data.latestChat.message, '수고하셨습니다!');
     assert.equal(resultChat.data.players.find(player => player.isMe).isHost, true);
+
+    await post(base, `/api/rooms/${code}/finish`, { playerId: 'battle-guest', round: 10, progress: 1, score: 90 });
+    const returned = await post(base, `/api/rooms/${code}/return-lobby`, { playerId: 'battle-owner' });
+    assert.equal(returned.status, 200);
+    assert.equal(returned.data.status, 'waiting');
+    assert.equal(returned.data.players.find(player => player.isMe).isHost, true);
+    assert.ok(returned.data.players.every(player => player.score === 0 && player.finished === false));
+    assert.equal(returned.data.lastResults.length, 2);
+
+    await post(base, '/api/match/cancel', { playerId: 'battle-guest' });
+    const afterGuestLeft = await post(base, `/api/rooms/${code}/settings`, {
+      playerId: 'battle-owner', maxWords: 8, secondsPerWord: 2.5, roundCount: 3, useAI: false,
+    });
+    assert.equal(afterGuestLeft.data.players.length, 1);
   });
 });
 

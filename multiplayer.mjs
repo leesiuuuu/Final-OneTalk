@@ -31,6 +31,7 @@ function closeStreams() {
 
 function handleRoom(room, eventName = 'room') {
   state.room = room;
+  if (room.status === 'waiting' && room.roundState?.phase === 'waiting') state.startedRoom = null;
   state.callbacks.onRoom?.(room, eventName);
   if (room.status === 'starting' && state.startedRoom !== room.code) {
     state.startedRoom = room.code;
@@ -118,6 +119,16 @@ export async function startPrivateRoom() {
   return request(`/api/rooms/${state.room.code}/start`, {
     method: 'POST', body: JSON.stringify({ playerId: state.playerId }),
   });
+}
+
+export async function returnToLobby() {
+  if (!state.room) return null;
+  const room = await request(`/api/rooms/${state.room.code}/return-lobby`, {
+    method: 'POST', body: JSON.stringify({ playerId: state.playerId }),
+  });
+  state.startedRoom = null;
+  handleRoom(room, 'room');
+  return room;
 }
 
 export async function sendLobbyChat(message) {

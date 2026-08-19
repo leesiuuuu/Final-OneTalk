@@ -3,7 +3,7 @@ import { interviewStage } from './src/interview-stage.ts';
 import { audioSystem } from './src/audio-system.ts';
 import {
   claimSprintWord, completeMultiplayerRound, configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
-  leaveMultiplayer, multiplayerRoom, quickMatch, sendLobbyChat, sendProgress, setReady,
+  leaveMultiplayer, multiplayerRoom, quickMatch, returnToLobby, sendLobbyChat, sendProgress, setReady,
   setRoomSettings, signalMultiplayerExit, startPrivateRoom,
 } from './multiplayer.mjs';
 
@@ -269,6 +269,11 @@ function renderMultiplayerRoom(room, eventName = 'room') {
   if (!screens.result.classList.contains('hidden')) {
     renderMatchResult(room);
     renderResultChatPlayers(room);
+    const canReturnToLobby = room.status === 'finished' || room.status === 'waiting';
+    $('#restart-button').disabled = !canReturnToLobby;
+    $('#restart-button').innerHTML = canReturnToLobby
+      ? '방으로 돌아가기 <span>→</span>'
+      : '결과 집계 중 <span>…</span>';
   }
   if (room.roundState?.phase === 'review') showSynchronizedRoundReview(room);
   if (eventName === 'round-start') advanceSynchronizedRound(room);
@@ -330,7 +335,7 @@ function showRaceEvent(message, type = '') {
 
 function renderMatchResult(room) {
   const panel = $('#match-result');
-  const ranked = [...room.players].sort((a, b) => b.score - a.score);
+  const ranked = [...(room.lastResults?.length ? room.lastResults : room.players)].sort((a, b) => b.score - a.score);
   const mine = ranked.findIndex(player => player.isMe);
   panel.classList.remove('hidden');
   panel.innerHTML = `<strong>${mine >= 0 ? `${mine + 1}위 / ${ranked.length}명` : '집계 중'}</strong>${ranked.map((player, index) => `<span>${index + 1}. ${player.nickname} · ${player.score.toFixed(1)}점${player.left ? ' (나감)' : player.finished ? '' : ' (진행 중)'}</span>`).join('<br>')}`;
@@ -344,7 +349,8 @@ function scheduleMultiplayerStart(room) {
   lastSprintId = room.latestSprint?.id ?? 0;
   audioSystem.matchFound();
   const countdownLength = 2800;
-  const delay = Math.max(0, room.startAt - Date.now() - countdownLength);
+  const serverStartInMs = Number(room.startInMs);
+  const delay = Math.max(0, (Number.isFinite(serverStartInMs) ? serverStartInMs : room.startAt - Date.now()) - countdownLength);
   multiplayerStartTimer = window.setTimeout(beginGame, delay);
 }
 
@@ -723,6 +729,7 @@ function showResults() {
     </div>`).join('');
   $('#result-chat').classList.toggle('hidden', gameMode !== 'multi');
   $('#restart-button').innerHTML = gameMode === 'multi' ? '방으로 돌아가기 <span>→</span>' : '다시 지원하기 <span>↻</span>';
+  $('#restart-button').disabled = gameMode === 'multi';
   if (gameMode === 'multi') {
     const room = multiplayerRoom();
     if (room) {
@@ -928,10 +935,18 @@ $('#quit-button').addEventListener('click', () => {
   leaveMultiplayer();
   showScreen('start');
 });
-$('#restart-button').addEventListener('click', () => {
+$('#restart-button').addEventListener('click', async () => {
   if (gameMode === 'multi' && multiplayerRoom()) {
-    showScreen('lobby');
-    renderLobby(multiplayerRoom());
+    $('#restart-button').disabled = true;
+    try {
+      const currentRoom = multiplayerRoom();
+      const room = currentRoom.status === 'waiting' ? currentRoom : await returnToLobby();
+      showScreen('lobby');
+      renderLobby(room);
+    } catch (error) {
+      flash(error.message);
+      $('#restart-button').disabled = false;
+    }
     return;
   }
   showScreen('start');

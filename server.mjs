@@ -84,6 +84,7 @@ function publicRoom(room, viewerId) {
     status: room.status,
     difficulty: room.difficulty,
     startAt: room.startAt,
+    startInMs: room.startAt == null ? null : Math.max(0, room.startAt - now),
     provider: room.provider,
     kind: room.kind,
     settings: { ...room.settings },
@@ -92,6 +93,7 @@ function publicRoom(room, viewerId) {
     aiFallback: room.aiFallback,
     latestSprint: room.latestSprint,
     latestChat: room.latestChat,
+    lastResults: room.lastResults?.map(player => ({ ...player, isMe: player.playerId === viewerId })) ?? null,
     serverNow: now,
     roundState: {
       ...room.roundState,
@@ -146,7 +148,7 @@ function createRoom(owner, provider = 'local', requestedCode, kind = 'private', 
   const room = {
     code, provider, kind, ownerId: owner.playerId, difficulty: owner.difficulty, status: 'waiting', startAt: null,
     settings: safeRoomSettings(requestedSettings, defaults[owner.difficulty]),
-    settingsVersion: 1, questions: null, aiFallback: null,
+    settingsVersion: 1, questions: null, aiFallback: null, lastResults: null,
     latestSprint: null, sprintSerial: 0, latestChat: null, chatSerial: 0,
     roundState: { index: 0, phase: 'waiting', nextRoundAt: null }, roundTimer: null,
     players: new Map(), streams: new Map(), disconnectTimers: new Map(), createdAt: Date.now(),
@@ -181,6 +183,28 @@ function startRoom(room) {
     player.roundScore = 0;
   });
   broadcast(room);
+}
+
+function resetRoomForRematch(room) {
+  if (room.status !== 'finished') throw new Error('모든 참가자의 결과 집계가 끝난 뒤 돌아갈 수 있습니다.');
+  room.status = 'waiting';
+  room.startAt = null;
+  room.latestSprint = null;
+  room.latestChat = null;
+  room.questions = null;
+  room.aiFallback = null;
+  room.roundState = { index: 0, phase: 'waiting', nextRoundAt: null };
+  room.players.forEach(player => {
+    player.round = 0;
+    player.progress = 0;
+    player.score = 0;
+    player.finished = false;
+    player.left = false;
+    player.ready = false;
+    player.completedRound = -1;
+    player.roundScore = 0;
+  });
+  broadcast(room, 'room');
 }
 
 function activePlayers(room) {
@@ -307,6 +331,10 @@ function updatePlayer(room, playerId, input) {
   if (input.finished) player.finished = true;
   if ([...room.players.values()].every(item => item.finished)) {
     room.status = 'finished';
+    room.lastResults = [...room.players.values()].map(player => ({
+      playerId: player.playerId, nickname: player.nickname, score: player.score,
+      left: player.left, finished: player.finished,
+    }));
   }
   broadcast(room, input.finished ? 'finish' : 'progress');
 }
@@ -458,6 +486,14 @@ async function api(req, res, url) {
     const room = findRoom(match[1], input.playerId);
     if (room.kind !== 'private' || room.ownerId !== input.playerId) throw new Error('방장만 게임을 시작할 수 있습니다.');
     await preparePrivateRoom(room);
+    return sendJson(res, 200, publicRoom(room, input.playerId));
+  }
+
+  match = url.pathname.match(/^\/api\/rooms\/([A-Z0-9]+)\/return-lobby$/i);
+  if (req.method === 'POST' && match) {
+    const input = JSON.parse((await readBody(req)).toString() || '{}');
+    const room = findRoom(match[1], input.playerId);
+    resetRoomForRematch(room);
     return sendJson(res, 200, publicRoom(room, input.playerId));
   }
 
