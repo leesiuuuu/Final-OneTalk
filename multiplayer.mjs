@@ -52,7 +52,7 @@ function connectRoom(room) {
   state.room = room;
   const stream = new EventSource(`/api/rooms/${room.code}/events?playerId=${encodeURIComponent(state.playerId)}`);
   state.roomStream = stream;
-  ['room', 'progress', 'finish', 'leave', 'chat', 'attack', 'generating', 'round-review', 'round-start'].forEach(eventName => stream.addEventListener(eventName, event => handleRoom(JSON.parse(event.data), eventName)));
+  ['room', 'progress', 'finish', 'leave', 'chat', 'sprint', 'generating', 'round-review', 'round-start'].forEach(eventName => stream.addEventListener(eventName, event => handleRoom(JSON.parse(event.data), eventName)));
   stream.addEventListener('destroyed', event => handleDestroyed(JSON.parse(event.data)));
   stream.onerror = () => state.callbacks.onConnection?.('reconnecting');
   handleRoom(room, 'room');
@@ -127,10 +127,10 @@ export async function sendLobbyChat(message) {
   });
 }
 
-export async function attackPlayer(targetId) {
+export async function claimSprintWord(round, wordIndex) {
   if (!state.room) return null;
-  return request(`/api/rooms/${state.room.code}/attack`, {
-    method: 'POST', body: JSON.stringify({ playerId: state.playerId, targetId }),
+  return request(`/api/rooms/${state.room.code}/sprint-claim`, {
+    method: 'POST', body: JSON.stringify({ playerId: state.playerId, round, wordIndex }),
   });
 }
 

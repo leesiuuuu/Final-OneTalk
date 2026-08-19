@@ -1059,10 +1059,11 @@ kbd {
 .opponent-row.left { opacity: .48; filter: grayscale(1); }
 .opponent-row.left .opponent-track i { background: #77736d; }
 .opponent-row.left small { color: var(--red); font-weight: 700; }
-.attack-button { width: 100%; margin-top: 5px; border: 2px solid var(--ink); background: var(--red); color: white; font: 700 8px Galmuri11, monospace; cursor: pointer; }
-.attack-button:disabled { opacity: .4; cursor: not-allowed; }
+.sprint-target { border: 2px solid var(--red); background: #fff0a8; color: var(--ink); box-shadow: 3px 3px 0 var(--red); }
+.sprint-target::after { content: "선점"; position: absolute; left: 50%; bottom: calc(100% + 3px); padding: 2px 4px; background: var(--red); color: white; font-size: 7px; transform: translateX(-50%); }
+.sprint-claimed { opacity: .58; }
 .race-event-banner { position: fixed; z-index: 30; top: 82px; left: 50%; padding: 10px 16px; border: 3px solid var(--ink); background: var(--lime); box-shadow: 5px 5px 0 var(--ink); color: var(--ink); font-size: 11px; font-weight: 700; transform: translateX(-50%); animation: eventDrop .28s ease-out both; }
-.race-event-banner.attack { background: var(--red); color: white; }
+.race-event-banner.sprint { background: var(--red); color: white; }
 @keyframes eventDrop { from { opacity: 0; transform: translate(-50%, -15px); } }
 body.under-attack .typing-panel { animation: pressureShake .5s ease-out; }
 @keyframes pressureShake { 20% { transform: translateX(-5px); filter: hue-rotate(25deg); } 40% { transform: translateX(4px); } 60% { transform: translateX(-3px); } }

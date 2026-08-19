@@ -12,7 +12,7 @@ export function compareWord(input = '', target = '') {
   return { correct, total: expected.length };
 }
 
-export function evaluateAnswer(inputWords, targetSentence, maxCombo, remaining, duration) {
+export function evaluateAnswer(inputWords, targetSentence, maxCombo, remaining, duration, modifiers = {}) {
   const targets = splitWords(targetSentence);
   let correct = 0;
   let total = 0;
@@ -24,13 +24,15 @@ export function evaluateAnswer(inputWords, targetSentence, maxCombo, remaining, 
   });
 
   const accuracy = total ? correct / total : 0;
-  const base = accuracy * 80;
-  const perfect = accuracy === 1 ? 15 : 0;
-  const combo = Math.min(maxCombo * 0.5, 5);
-  const speed = duration > 0 ? Math.max(0, remaining) / duration * accuracy * 10 : 0;
+  const mistakePenaltyMultiplier = Math.max(1, Number(modifiers.mistakePenaltyMultiplier) || 1);
+  const scoreMultiplier = Math.max(1, Number(modifiers.scoreMultiplier) || 1);
+  const base = Math.max(0, 80 - (1 - accuracy) * 80 * mistakePenaltyMultiplier) * scoreMultiplier;
+  const perfect = (accuracy === 1 ? 15 : 0) * scoreMultiplier;
+  const combo = Math.min(maxCombo * 0.5, 5) * scoreMultiplier;
+  const speed = (duration > 0 ? Math.max(0, remaining) / duration * accuracy * 10 : 0) * scoreMultiplier;
   const totalScore = base + perfect + combo + speed;
 
-  return { accuracy, correct, total, base, perfect, combo, speed, totalScore };
+  return { accuracy, correct, total, base, perfect, combo, speed, totalScore, mistakePenaltyMultiplier, scoreMultiplier };
 }
 
 export function updateCombo(input, target, currentCombo) {

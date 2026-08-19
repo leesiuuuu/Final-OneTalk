@@ -54,7 +54,7 @@ test('진행도와 점수는 허용 범위로 제한된다', async () => {
     const me = updated.data.players.find(player => player.isMe);
     assert.equal(me.round, 10);
     assert.equal(me.progress, 1);
-    assert.equal(me.score, 1100);
+    assert.equal(me.score, 2200);
   });
 });
 
@@ -144,7 +144,7 @@ test('라운드 수와 어절 규칙이 모든 참가자에게 동일하게 적�
   });
 });
 
-test('대기실 채팅과 게임 중 압박 카드를 서버가 검증한다', async () => {
+test('대기실 채팅과 게임 중 선점 어절을 서버가 최초 1명만 인정한다', async () => {
   await withServer(async base => {
     const owner = await post(base, '/api/rooms', { playerId: 'battle-owner', nickname: '방장', difficulty: 'startup' });
     const code = owner.data.code;
@@ -155,12 +155,13 @@ test('대기실 채팅과 게임 중 압박 카드를 서버가 검증한다', a
     const ready = await post(base, `/api/rooms/${code}/ready`, { playerId: 'battle-guest', ready: true });
     assert.equal(ready.data.latestChat, null);
     await post(base, `/api/rooms/${code}/start`, { playerId: 'battle-owner' });
-    const attack = await post(base, `/api/rooms/${code}/attack`, { playerId: 'battle-owner', targetId: 'battle-guest' });
-    assert.equal(attack.status, 200);
-    assert.equal(attack.data.latestAttack.penaltyMs, 2000);
-    assert.equal(attack.data.players.find(player => player.isMe).attacksLeft, 1);
-    const cooldown = await post(base, `/api/rooms/${code}/attack`, { playerId: 'battle-owner', targetId: 'battle-guest' });
-    assert.equal(cooldown.status, 400);
+    const sprint = await post(base, `/api/rooms/${code}/sprint-claim`, { playerId: 'battle-owner', round: 0, wordIndex: 2 });
+    assert.equal(sprint.status, 200);
+    assert.equal(sprint.data.latestSprint.penaltyMs, 2000);
+    assert.equal(sprint.data.latestSprint.winnerId, 'battle-owner');
+    const late = await post(base, `/api/rooms/${code}/sprint-claim`, { playerId: 'battle-guest', round: 0, wordIndex: 2 });
+    assert.equal(late.status, 200);
+    assert.equal(late.data.latestSprint.winnerId, 'battle-owner');
   });
 });
 

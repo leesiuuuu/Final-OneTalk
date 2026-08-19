@@ -2,7 +2,7 @@ import { splitWords, evaluateAnswer, updateCombo } from './scoring.mjs';
 import { interviewStage } from './src/interview-stage.ts';
 import { audioSystem } from './src/audio-system.ts';
 import {
-  attackPlayer, completeMultiplayerRound, configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
+  claimSprintWord, completeMultiplayerRound, configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
   leaveMultiplayer, multiplayerRoom, quickMatch, sendLobbyChat, sendProgress, setReady,
   setRoomSettings, signalMultiplayerExit, startPrivateRoom,
 } from './multiplayer.mjs';
@@ -81,7 +81,7 @@ let multiplayerReviewTimer = 0;
 let customRules = null;
 let customQuestions = null;
 let phaserDangerActive = false;
-let lastAttackId = 0;
+let lastSprintId = 0;
 let aiQuestionsAvailable = false;
 const leftPlayerIds = new Set();
 const chatBubbleTimers = new Map();
@@ -115,6 +115,13 @@ function currentPair() {
 }
 
 function roundCount() { return gameMode === 'multi' ? (customRules?.roundCount ?? 10) : 10; }
+
+function multiplayerRoundEvent(roundIndex = round) {
+  if (gameMode !== 'multi') return null;
+  if (roundIndex === 2 || roundIndex === 8) return { scoreMultiplier: 2, message: '보너스 면접 · 이번 라운드 점수 2배' };
+  if (roundIndex === 5) return { mistakePenaltyMultiplier: 2, message: '정밀 면접 · 오타 기본 점수 감소 2배' };
+  return null;
+}
 
 function totalScore() { return history.reduce((sum, item) => sum + item.totalScore, 0); }
 
@@ -211,20 +218,20 @@ function renderMultiplayerRoom(room, eventName = 'room') {
     <div class="opponent-row ${player.left ? 'left' : ''}">
       <div><strong>${player.nickname}</strong><small>${player.left ? '나감' : `Q${Math.max(1, player.round)}/${roundCount()}`}</small><b>${Math.round(player.score)}점</b></div>
       <div class="opponent-track"><i style="width:${player.progress * 100}%"></i></div>
-      ${player.left || player.finished ? '' : `<button class="attack-button" data-target-id="${player.playerId}" ${!me?.attacksLeft ? 'disabled' : ''}>압박 -2초</button>`}
     </div>`).join('');
-  if (room.latestAttack?.id > lastAttackId) {
-    lastAttackId = room.latestAttack.id;
-    const attack = room.latestAttack;
-    if (attack.targetId === me?.playerId && Date.now() - attack.at < 5000 && !roundClosed) {
-      endAt -= attack.penaltyMs;
+  if (room.latestSprint?.id > lastSprintId) {
+    lastSprintId = room.latestSprint.id;
+    const sprint = room.latestSprint;
+    if (sprint.winnerId !== me?.playerId && sprint.round === round && Date.now() - sprint.at < 5000 && !roundClosed) {
+      endAt -= sprint.penaltyMs;
       document.body.classList.add('under-attack');
       window.setTimeout(() => document.body.classList.remove('under-attack'), 700);
-      showRaceEvent(`${attack.attackerName}의 압박! 제한 시간 -2초`, 'attack');
-    } else if (attack.attackerId === me?.playerId) {
-      showRaceEvent(`${attack.targetName}에게 압박 성공 · ${me.attacksLeft}장 남음`, 'attack');
+      showRaceEvent(`${sprint.winnerName} 선점! 내 제한 시간 -2초`, 'sprint');
+    } else if (sprint.winnerId === me?.playerId) {
+      showRaceEvent('선점 성공! 상대 전원의 제한 시간 -2초', 'sprint');
     }
   }
+  if (eventName === 'sprint') renderTargetGuide();
   if (!screens.result.classList.contains('hidden')) renderMatchResult(room);
   if (room.roundState?.phase === 'review') showSynchronizedRoundReview(room);
   if (eventName === 'round-start') advanceSynchronizedRound(room);
@@ -292,7 +299,7 @@ function scheduleMultiplayerStart(room) {
   selectedDifficulty = room.difficulty;
   customRules = { ...room.settings };
   customQuestions = room.questions ?? null;
-  lastAttackId = room.latestAttack?.id ?? 0;
+  lastSprintId = room.latestSprint?.id ?? 0;
   audioSystem.matchFound();
   const countdownLength = 2800;
   const delay = Math.max(0, room.startAt - Date.now() - countdownLength);
@@ -337,6 +344,10 @@ function renderTargetGuide() {
       });
     } else {
       token.textContent = word;
+    }
+    const sprint = multiplayerRoom()?.roundState;
+    if (gameMode === 'multi' && sprint?.phase === 'playing' && wordIndex === sprint.sprintTargetIndex) {
+      token.classList.add(multiplayerRoom()?.latestSprint ? 'sprint-claimed' : 'sprint-target');
     }
     container.append(token, document.createTextNode(' '));
   });
@@ -429,11 +440,6 @@ async function beginRound() {
   maxCombo = 0;
   roundClosed = true;
   duration = splitWords(answer).length * (customRules?.secondsPerWord ?? CONFIG[selectedDifficulty].seconds);
-  if (gameMode === 'multi' && [2, 8].includes(round)) duration *= round === 8 ? 0.8 : 0.85;
-  if (gameMode === 'multi' && round === 5) {
-    combo = 3;
-    maxCombo = 3;
-  }
   remaining = duration;
   lastCountdownSecond = null;
 
@@ -467,9 +473,8 @@ async function beginRound() {
   $('#submit-button').disabled = false;
   endAt = performance.now() + duration * 1000;
   roundStartedAt = performance.now();
-  if (gameMode === 'multi' && round === 2) showRaceEvent('돌발 질문 · 이번 라운드 제한 시간 -15%', 'event');
-  if (gameMode === 'multi' && round === 5) showRaceEvent('집중 면접 · 콤보 3부터 시작', 'event');
-  if (gameMode === 'multi' && round === 8) showRaceEvent('최종 압박 · 이번 라운드 제한 시간 -20%', 'event');
+  const roundEvent = multiplayerRoundEvent();
+  if (roundEvent) showRaceEvent(roundEvent.message, 'event');
   $('#word-input').focus();
   timerId = requestAnimationFrame(tick);
 }
@@ -510,7 +515,8 @@ function commitWord(rawWord) {
   if (roundClosed || !rawWord) return;
   const targets = splitWords(currentPair()[1]);
   if (committed.length >= targets.length) return;
-  const target = targets[committed.length] ?? '';
+  const wordIndex = committed.length;
+  const target = targets[wordIndex] ?? '';
   const word = rawWord.trim();
   if (!word) return;
   const correctWord = word === target;
@@ -519,6 +525,10 @@ function commitWord(rawWord) {
   combo = result.combo;
   maxCombo = Math.max(maxCombo, result.maximum);
   committed.push(word);
+  const sprint = multiplayerRoom()?.roundState;
+  if (gameMode === 'multi' && correctWord && sprint?.phase === 'playing' && wordIndex === sprint.sprintTargetIndex && !multiplayerRoom()?.latestSprint) {
+    claimSprintWord(round, wordIndex).catch(error => flash(error.message));
+  }
 
   const token = document.createElement('span');
   token.className = correctWord ? 'locked-word correct' : 'locked-word wrong';
@@ -570,7 +580,7 @@ function finishRound(timedOut = false) {
   cancelAnimationFrame(timerId);
   input.blur();
 
-  const score = evaluateAnswer(committed, currentPair()[1], maxCombo, timedOut ? 0 : remaining, duration);
+  const score = evaluateAnswer(committed, currentPair()[1], maxCombo, timedOut ? 0 : remaining, duration, multiplayerRoundEvent() ?? {});
   if (timedOut) audioSystem.timeout();
   else audioSystem.submit();
   history.push({ ...score, maxCombo, answer: committed.join(' ') });
@@ -843,15 +853,6 @@ $('#lobby-chat-form').addEventListener('submit', async event => {
   input.value = '';
   try { await sendLobbyChat(message); }
   catch (error) { flash(error.message); }
-});
-$('#opponent-list').addEventListener('click', event => {
-  const button = event.target.closest('.attack-button');
-  if (!button) return;
-  button.disabled = true;
-  attackPlayer(button.dataset.targetId).catch(error => {
-    flash(error.message);
-    button.disabled = false;
-  });
 });
 $('#copy-room-code').addEventListener('click', async () => {
   await navigator.clipboard.writeText(multiplayerRoom()?.code ?? '');

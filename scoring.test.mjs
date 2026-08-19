@@ -22,4 +22,12 @@ const timeout = evaluateAnswer(['저는'], '저는 지원자입니다', 2, 0, 10
 assert.equal(timeout.speed, 0);
 assert.ok(timeout.accuracy > 0 && timeout.accuracy < 1);
 
+const doubleScore = evaluateAnswer(['정확한', '답변'], '정확한 답변', 10, 5, 10, { scoreMultiplier: 2 });
+assert.equal(doubleScore.totalScore, 210);
+
+const normalMistake = evaluateAnswer(['가나', '다라'], '가나 다마', 0, 0, 10);
+const doubleMistake = evaluateAnswer(['가나', '다라'], '가나 다마', 0, 0, 10, { mistakePenaltyMultiplier: 2 });
+assert.ok(doubleMistake.base < normalMistake.base);
+assert.equal(doubleMistake.accuracy, normalMistake.accuracy);
+
 console.log('scoring tests passed');
