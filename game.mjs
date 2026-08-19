@@ -3,7 +3,7 @@ import { interviewStage } from './src/interview-stage.ts';
 import { audioSystem } from './src/audio-system.ts';
 import {
   claimSprintWord, completeMultiplayerRound, configureMultiplayer, createPrivateRoom, finishMatch, joinPrivateRoom,
-  leaveMultiplayer, multiplayerRoom, quickMatch, returnToLobby, sendLobbyChat, sendProgress, setReady,
+  leaveMultiplayer, multiplayerRoom, quickMatch, returnToLobby, sendLobbyChat, sendProgress, serverDelayUntil, setReady,
   setRoomSettings, signalMultiplayerExit, startPrivateRoom,
 } from './multiplayer.mjs';
 
@@ -75,6 +75,8 @@ let feedbackUnlockTimer = 0;
 let feedbackAutoTimer = 0;
 let feedbackCountdownTimer = 0;
 let feedbackReady = false;
+let inputComposing = false;
+let commitSpaceAfterComposition = false;
 let gameMode = 'single';
 let multiplayerStartTimer = 0;
 let multiplayerReviewTimer = 0;
@@ -286,9 +288,10 @@ function showSynchronizedRoundReview(room) {
   window.clearTimeout(feedbackAutoTimer);
   const reviewRoundIndex = room.roundState.index;
   const serverRemainingMs = Number(room.roundState.nextRoundInMs);
-  const reviewDeadline = performance.now() + (Number.isFinite(serverRemainingMs)
-    ? Math.max(0, serverRemainingMs)
-    : Math.max(0, (room.roundState.nextRoundAt ?? Date.now()) - Date.now()));
+  const preciseRemainingMs = serverDelayUntil(room.roundState.nextRoundAt);
+  const reviewDeadline = performance.now() + (room.roundState.nextRoundAt != null
+    ? preciseRemainingMs
+    : Number.isFinite(serverRemainingMs) ? Math.max(0, serverRemainingMs) : 0);
   const ranked = [...room.players].filter(player => !player.left).sort((a, b) => b.score - a.score);
   const panel = $('#round-review-panel');
   panel.classList.remove('hidden');
@@ -350,7 +353,10 @@ function scheduleMultiplayerStart(room) {
   audioSystem.matchFound();
   const countdownLength = 2800;
   const serverStartInMs = Number(room.startInMs);
-  const delay = Math.max(0, (Number.isFinite(serverStartInMs) ? serverStartInMs : room.startAt - Date.now()) - countdownLength);
+  const preciseStartInMs = serverDelayUntil(room.startAt);
+  const delay = Math.max(0, (room.startAt != null
+    ? preciseStartInMs
+    : Number.isFinite(serverStartInMs) ? serverStartInMs : countdownLength) - countdownLength);
   multiplayerStartTimer = window.setTimeout(beginGame, delay);
 }
 
@@ -477,6 +483,8 @@ function beginGame() {
 
 async function beginRound() {
   const sequence = ++roundSequence;
+  inputComposing = false;
+  commitSpaceAfterComposition = false;
   window.clearTimeout(feedbackUnlockTimer);
   window.clearTimeout(feedbackAutoTimer);
   window.clearInterval(feedbackCountdownTimer);
@@ -596,12 +604,19 @@ function commitWord(rawWord) {
 
 }
 
-function handleInput(event) {
-  if (event.isComposing || roundClosed) return;
-  const input = event.currentTarget;
+function processWordInput(input, forceCommit = false) {
+  if (roundClosed) return;
   renderTargetGuide();
   updateSpeed();
-  if (!/\s/u.test(input.value)) return;
+  if (!/\s/u.test(input.value)) {
+    if (!forceCommit) return;
+    const word = input.value.trim();
+    input.value = '';
+    if (word) commitWord(word);
+    syncProgress();
+    if (committed.length >= splitWords(currentPair()[1]).length) finishRound(false);
+    return;
+  }
   const pieces = input.value.split(/\s+/u);
   const endsWithSpace = /\s$/u.test(input.value);
   const complete = endsWithSpace ? pieces : pieces.slice(0, -1);
@@ -610,6 +625,11 @@ function handleInput(event) {
   complete.filter(Boolean).slice(0, available).forEach(commitWord);
   syncProgress();
   if (committed.length >= splitWords(currentPair()[1]).length) finishRound(false);
+}
+
+function handleInput(event) {
+  if (event.isComposing || inputComposing) return;
+  processWordInput(event.currentTarget);
 }
 
 function finishRound(timedOut = false) {
@@ -954,7 +974,24 @@ $('#restart-button').addEventListener('click', async () => {
 $('#next-button').addEventListener('click', nextRound);
 $('#submit-button').addEventListener('click', () => finishRound(false));
 $('#word-input').addEventListener('input', handleInput);
+$('#word-input').addEventListener('compositionstart', () => {
+  inputComposing = true;
+});
+$('#word-input').addEventListener('compositionend', event => {
+  inputComposing = false;
+  if (!commitSpaceAfterComposition) {
+    processWordInput(event.currentTarget);
+    return;
+  }
+  commitSpaceAfterComposition = false;
+  const input = event.currentTarget;
+  window.setTimeout(() => processWordInput(input, true), 0);
+});
 $('#word-input').addEventListener('keydown', event => {
+  if ((event.code === 'Space' || event.key === ' ') && (event.isComposing || inputComposing)) {
+    commitSpaceAfterComposition = true;
+    return;
+  }
   if (event.code === 'Space' && !event.isComposing && !event.currentTarget.value.trim()) {
     event.preventDefault();
     event.currentTarget.value = '';

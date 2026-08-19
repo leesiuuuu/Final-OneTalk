@@ -5,14 +5,21 @@ const state = {
   playerId: tabPlayerId,
   nickname: '', room: null, roomStream: null, matchStream: null, callbacks: {}, startedRoom: null,
   lastProgressAt: 0, pendingProgress: null, progressTimer: 0,
+  serverClockOffsetMs: 0, hasClockSync: false,
 };
 
 async function request(path, options = {}) {
+  const requestedAt = Date.now();
   const response = await fetch(path, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...options.headers },
   });
   const data = await response.json().catch(() => ({}));
+  const receivedAt = Date.now();
+  if (Number.isFinite(Number(data.serverNow))) {
+    state.serverClockOffsetMs = Number(data.serverNow) - (requestedAt + receivedAt) / 2;
+    state.hasClockSync = true;
+  }
   if (!response.ok) throw new Error(data.error || '멀티플레이 서버에 연결할 수 없습니다.');
   return data;
 }
@@ -30,6 +37,9 @@ function closeStreams() {
 }
 
 function handleRoom(room, eventName = 'room') {
+  if (!state.hasClockSync && Number.isFinite(Number(room.serverNow))) {
+    state.serverClockOffsetMs = Number(room.serverNow) - Date.now();
+  }
   state.room = room;
   if (room.status === 'waiting' && room.roundState?.phase === 'waiting') state.startedRoom = null;
   state.callbacks.onRoom?.(room, eventName);
@@ -201,3 +211,8 @@ export function signalMultiplayerExit() {
 
 export function multiplayerRoom() { return state.room; }
 export function myPlayerId() { return state.playerId; }
+export function serverDelayUntil(serverTimestamp) {
+  const timestamp = Number(serverTimestamp);
+  if (!Number.isFinite(timestamp)) return 0;
+  return Math.max(0, timestamp - (Date.now() + state.serverClockOffsetMs));
+}
