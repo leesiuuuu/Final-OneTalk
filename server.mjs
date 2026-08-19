@@ -78,6 +78,7 @@ function makeCode() {
 }
 
 function publicRoom(room, viewerId) {
+  const now = Date.now();
   return {
     code: room.code,
     status: room.status,
@@ -91,7 +92,11 @@ function publicRoom(room, viewerId) {
     aiFallback: room.aiFallback,
     latestSprint: room.latestSprint,
     latestChat: room.latestChat,
-    roundState: { ...room.roundState },
+    serverNow: now,
+    roundState: {
+      ...room.roundState,
+      nextRoundInMs: room.roundState.nextRoundAt == null ? null : Math.max(0, room.roundState.nextRoundAt - now),
+    },
     players: [...room.players.values()].map(player => ({
       playerId: player.playerId,
       nickname: player.nickname,
@@ -477,7 +482,8 @@ async function api(req, res, url) {
     const input = JSON.parse((await readBody(req)).toString() || '{}');
     const room = findRoom(match[1], input.playerId);
     const player = room.players.get(input.playerId);
-    const canChat = ['waiting', 'generating', 'finished'].includes(room.status) || Boolean(player?.finished);
+    const canChat = ['waiting', 'generating', 'finished'].includes(room.status)
+      || room.roundState.phase === 'final' || Boolean(player?.finished);
     if (!canChat) throw new Error('대기실 또는 결과 화면에서만 채팅할 수 있습니다.');
     const message = String(input.message ?? '').replace(/[<>&"']/g, '').trim().slice(0, 80);
     if (!message) throw new Error('메시지를 입력해 주세요.');

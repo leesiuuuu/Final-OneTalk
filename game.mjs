@@ -83,7 +83,6 @@ let customQuestions = null;
 let phaserDangerActive = false;
 let lastSprintId = 0;
 let aiQuestionsAvailable = false;
-let resultChatTimer = 0;
 const leftPlayerIds = new Set();
 const chatBubbleTimers = new Map();
 
@@ -138,21 +137,22 @@ function renderLobby(room) {
   $('#copy-room-code').classList.toggle('hidden', !room?.code);
   const players = room?.players ?? [];
   const me = players.find(player => player.isMe);
-  $('#room-rules').classList.toggle('hidden', !room || room.kind !== 'private' || !me?.isHost);
+  const isPostGame = Boolean(room && (room.status === 'finished' || room.roundState?.phase === 'final'));
   $('#lobby-players').innerHTML = Array.from({ length: 4 }, (_, index) => {
     const player = players[index];
     if (!player) return `<div class="lobby-player waiting"><span>SLOT ${index + 1}</span><strong>대기 중</strong></div>`;
-    const status = player.isHost ? '방장 · 시작 담당' : player.ready ? '준비 완료' : '준비 필요';
-    const indicator = player.isHost ? 'H' : player.ready ? '✓' : '…';
-    return `<div class="lobby-player ${player.isHost ? 'host' : ''} ${player.ready ? 'ready' : ''} ${player.isMe ? 'me' : ''}" data-player-id="${player.playerId}"><span class="player-slot">${player.isMe ? 'YOU' : player.isHost ? 'HOST' : `PLAYER ${index + 1}`}</span><i class="ready-indicator">${indicator}</i><strong>${player.nickname}</strong><small class="player-state">${status}</small></div>`;
+    const status = player.left ? '방에서 나감' : isPostGame ? '결과 확인 완료' : player.isHost ? '방장 · 시작 담당' : player.ready ? '준비 완료' : '준비 필요';
+    const indicator = player.left ? '×' : isPostGame ? '✓' : player.isHost ? 'H' : player.ready ? '✓' : '…';
+    return `<div class="lobby-player ${player.isHost ? 'host' : ''} ${player.ready && !isPostGame ? 'ready' : ''} ${player.isMe ? 'me' : ''}" data-player-id="${player.playerId}"><span class="player-slot">${player.isMe ? 'YOU' : player.isHost ? 'HOST' : `PLAYER ${index + 1}`}</span><i class="ready-indicator">${indicator}</i><strong>${player.nickname}</strong><small class="player-state">${status}</small></div>`;
   }).join('');
   if (!room) return;
   selectedDifficulty = room.difficulty;
   customRules = { ...room.settings };
   customQuestions = room.questions ?? null;
-  const isStarting = room.status === 'starting';
+  const isStarting = room.status === 'starting' && !isPostGame;
   const isGenerating = room.status === 'generating';
   const canConfigure = room.kind === 'private' && room.status === 'waiting';
+  $('#room-rules').classList.toggle('hidden', !canConfigure || !me?.isHost);
   $('#room-max-words').value = room.settings.maxWords;
   $('#room-seconds-per-word').value = room.settings.secondsPerWord;
   $('#room-round-count').value = room.settings.roundCount;
@@ -166,7 +166,7 @@ function renderLobby(room) {
   $('#room-rules-owner').textContent = canConfigure ? '방장 전용 · 변경 시 게스트 준비 해제' : '게임 규칙 잠김';
   const guestPlayers = players.filter(player => !player.isHost);
   const guestsReady = guestPlayers.length > 0 && guestPlayers.every(player => player.ready);
-  $('#ready-button').classList.toggle('hidden', room.provider !== 'local' || isStarting || isGenerating || Boolean(me?.isHost));
+  $('#ready-button').classList.toggle('hidden', isPostGame || room.provider !== 'local' || isStarting || isGenerating || Boolean(me?.isHost));
   const readyButton = $('#ready-button');
   readyButton.disabled = false;
   readyButton.classList.toggle('is-ready', Boolean(me?.ready));
@@ -174,12 +174,15 @@ function renderLobby(room) {
   readyButton.innerHTML = me?.ready
     ? '<div><strong>준비 완료</strong><small>방장의 시작을 기다리는 중 · 클릭하면 취소</small></div><b>✓</b>'
     : '<div><strong>준비하기</strong><small>방장에게 시작할 준비가 됐다고 알립니다</small></div><b>→</b>';
-  $('#host-start-button').classList.toggle('hidden', room.kind !== 'private' || !me?.isHost || isStarting || isGenerating);
+  $('#host-start-button').classList.toggle('hidden', isPostGame || room.kind !== 'private' || !me?.isHost || isStarting || isGenerating);
   $('#host-start-button').disabled = players.length < 2 || !guestsReady;
-  $('#matching-loader').classList.toggle('loading', !isStarting);
+  $('#matching-loader').classList.toggle('loading', !isStarting && !isPostGame);
   $('#lobby-chat-form').classList.toggle('hidden', isStarting);
-  $('#lobby-title').textContent = isGenerating ? 'AI 면접 문장 생성 중' : isStarting ? `${players.length}인 면접 레이스 확정` : '지원자 대기실';
-  $('#lobby-status').innerHTML = isGenerating
+  $('#cancel-match-button').textContent = isPostGame ? '방 나가기' : '매칭 취소';
+  $('#lobby-title').textContent = isPostGame ? '면접 종료 · 대기실' : isGenerating ? 'AI 면접 문장 생성 중' : isStarting ? `${players.length}인 면접 레이스 확정` : '지원자 대기실';
+  $('#lobby-status').innerHTML = isPostGame
+    ? '같은 방 참가자들과 이야기를 나눈 뒤 자유롭게 나갈 수 있습니다'
+    : isGenerating
     ? '무료 AI가 질문과 답변을 만들고 있습니다<span class="waiting-dots">...</span>'
     : isStarting ? (room.aiFallback ? 'AI 생성이 지연되어 기본 면접 문장으로 시작합니다' : '곧 동시에 면접이 시작됩니다') : me?.isHost
       ? (guestsReady ? '모든 게스트 준비 완료 · 시작 버튼을 눌러 주세요' : `현재 ${players.length}/4명 · 게스트의 준비를 기다리는 중<span class="waiting-dots">...</span>`)
@@ -202,17 +205,30 @@ function showLobbyChat(chat) {
   }, 4200));
 }
 
+function renderResultChatPlayers(room) {
+  const container = $('#result-chat-players');
+  container.innerHTML = room.players.map(player => `
+    <div class="result-chat-player ${player.isMe ? 'me' : ''} ${player.left ? 'left' : ''}" data-player-id="${player.playerId}">
+      <i class="result-chat-avatar" aria-hidden="true"></i>
+      <strong>${player.nickname}${player.isMe ? ' · 나' : ''}</strong>
+    </div>`).join('');
+}
+
 function showResultChat(chat) {
   if (!chat || screens.result.classList.contains('hidden')) return;
-  window.clearTimeout(resultChatTimer);
-  const message = $('#result-chat-message');
-  message.innerHTML = '';
-  const sender = document.createElement('strong');
-  sender.textContent = `${chat.nickname}: `;
-  message.append(sender, document.createTextNode(chat.message));
-  resultChatTimer = window.setTimeout(() => {
-    message.textContent = '새로운 메시지를 기다리는 중…';
-  }, 5200);
+  const player = [...$('#result-chat-players').children].find(item => item.dataset.playerId === chat.playerId);
+  if (!player) return;
+  player.querySelector('.player-chat-bubble')?.remove();
+  const timerKey = `result-${chat.playerId}`;
+  clearTimeout(chatBubbleTimers.get(timerKey));
+  const bubble = document.createElement('em');
+  bubble.className = 'player-chat-bubble';
+  bubble.textContent = chat.message;
+  player.append(bubble);
+  chatBubbleTimers.set(timerKey, window.setTimeout(() => {
+    bubble.remove();
+    chatBubbleTimers.delete(timerKey);
+  }, 5200));
 }
 
 function renderMultiplayerRoom(room, eventName = 'room') {
@@ -247,7 +263,10 @@ function renderMultiplayerRoom(room, eventName = 'room') {
     }
   }
   if (eventName === 'sprint') renderTargetGuide();
-  if (!screens.result.classList.contains('hidden')) renderMatchResult(room);
+  if (!screens.result.classList.contains('hidden')) {
+    renderMatchResult(room);
+    renderResultChatPlayers(room);
+  }
   if (room.roundState?.phase === 'review') showSynchronizedRoundReview(room);
   if (eventName === 'round-start') advanceSynchronizedRound(room);
 }
@@ -258,6 +277,10 @@ function showSynchronizedRoundReview(room) {
   window.clearInterval(feedbackCountdownTimer);
   window.clearTimeout(feedbackAutoTimer);
   const reviewRoundIndex = room.roundState.index;
+  const serverRemainingMs = Number(room.roundState.nextRoundInMs);
+  const reviewDeadline = performance.now() + (Number.isFinite(serverRemainingMs)
+    ? Math.max(0, serverRemainingMs)
+    : Math.max(0, (room.roundState.nextRoundAt ?? Date.now()) - Date.now()));
   const ranked = [...room.players].filter(player => !player.left).sort((a, b) => b.score - a.score);
   const panel = $('#round-review-panel');
   panel.classList.remove('hidden');
@@ -272,7 +295,7 @@ function showSynchronizedRoundReview(room) {
       stopMultiplayerReviewTimer();
       return;
     }
-    const remainingSeconds = Math.max(0, ((currentRoundState.nextRoundAt ?? Date.now()) - Date.now()) / 1000);
+    const remainingSeconds = Math.max(0, (reviewDeadline - performance.now()) / 1000);
     const totalRounds = Number(currentRoom.settings?.roundCount) || roundCount();
     const label = reviewRoundIndex >= totalRounds - 1 ? '최종 결과' : '다음 라운드';
     const countdownText = remainingSeconds > 0 ? `${remainingSeconds.toFixed(1)}초 후 ${label}` : `${label} 전환 대기 중`;
@@ -696,11 +719,13 @@ function showResults() {
       <span>Q${index + 1}</span><i style="height:${Math.max(4, item.accuracy * 100)}%"></i>
     </div>`).join('');
   $('#result-chat').classList.toggle('hidden', gameMode !== 'multi');
-  $('#result-chat-message').textContent = '새로운 메시지를 기다리는 중…';
-  $('#restart-button').innerHTML = gameMode === 'multi' ? '방 나가기 <span>→</span>' : '다시 지원하기 <span>↻</span>';
+  $('#restart-button').innerHTML = gameMode === 'multi' ? '방으로 돌아가기 <span>→</span>' : '다시 지원하기 <span>↻</span>';
   if (gameMode === 'multi') {
     const room = multiplayerRoom();
-    if (room) renderMatchResult(room);
+    if (room) {
+      renderMatchResult(room);
+      renderResultChatPlayers(room);
+    }
     finishMatch({ round: roundCount(), progress: 1, score: total }).then(updated => updated && renderMultiplayerRoom(updated)).catch(error => flash(error.message));
   }
 }
@@ -901,7 +926,11 @@ $('#quit-button').addEventListener('click', () => {
   showScreen('start');
 });
 $('#restart-button').addEventListener('click', () => {
-  if (gameMode === 'multi') leaveMultiplayer();
+  if (gameMode === 'multi' && multiplayerRoom()) {
+    showScreen('lobby');
+    renderLobby(multiplayerRoom());
+    return;
+  }
   showScreen('start');
 });
 $('#next-button').addEventListener('click', nextRound);

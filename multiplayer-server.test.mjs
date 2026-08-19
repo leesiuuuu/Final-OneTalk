@@ -192,6 +192,8 @@ test('모든 참가자가 답변을 마쳐야 라운드 중간 점검으로 전�
     });
     assert.equal(second.data.roundState.phase, 'review');
     assert.ok(second.data.roundState.nextRoundAt > Date.now());
+    assert.ok(second.data.roundState.nextRoundInMs > 5000);
+    assert.equal(typeof second.data.serverNow, 'number');
     assert.equal(second.data.players.find(player => player.playerId === 'round-guest').roundScore, 82);
 
     const earlyNextRound = await post(base, `/api/rooms/${code}/round-complete`, {

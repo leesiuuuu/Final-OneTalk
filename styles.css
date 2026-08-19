@@ -1072,8 +1072,14 @@ body.under-attack .typing-panel { animation: pressureShake .5s ease-out; }
 .result-chat { width: min(580px, 90vw); margin: 14px auto 18px; padding: 12px; border: 3px solid var(--ink); background: #e9dfc5; box-shadow: 5px 5px 0 var(--ink); text-align: left; }
 .result-chat-heading { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 9px; font-size: 9px; }
 .result-chat-heading span { color: #706b5e; }
-.result-chat-message { min-height: 42px; padding: 9px 10px; border: 2px dashed #918875; background: var(--cream); font-size: 10px; line-height: 1.5; }
-.result-chat-message strong { color: var(--red); }
+.result-chat-players { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; min-height: 92px; padding-top: 30px; }
+.result-chat-player { position: relative; display: grid; justify-items: center; gap: 5px; min-width: 0; padding: 8px 4px; border: 2px solid var(--ink); background: var(--cream); text-align: center; }
+.result-chat-player.me { background: #d9f4ef; }
+.result-chat-player.left { opacity: .45; }
+.result-chat-avatar { position: relative; width: 34px; height: 29px; border: 2px solid var(--ink); border-radius: 14px 14px 5px 5px; background: var(--blue); box-shadow: inset 0 -5px 0 #20253c; }
+.result-chat-avatar::before { content: ""; position: absolute; left: 6px; top: -8px; width: 18px; height: 16px; border: 2px solid var(--ink); border-radius: 50%; background: #e0ad8d; box-shadow: inset 0 5px 0 #29273a; }
+.result-chat-player strong { overflow: hidden; width: 100%; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.result-chat-player .player-chat-bubble { bottom: calc(100% + 7px); max-width: 180px; }
 .result-chat-form { display: grid; grid-template-columns: 1fr 84px; gap: 8px; margin-top: 9px; }
 .result-chat-form input { min-width: 0; height: 42px; padding: 0 10px; border: 3px solid var(--ink); background: white; color: var(--ink); font: inherit; }
 .result-chat-form .secondary-button { min-height: 42px; }
@@ -1086,6 +1092,7 @@ body.under-attack .typing-panel { animation: pressureShake .5s ease-out; }
   .multiplayer-controls label { grid-template-columns: 1fr; gap: 6px; text-align: left; }
   .multiplayer-rule-setup label { grid-template-columns: 1fr 64px 20px; align-items: center; }
   .result-chat-heading { flex-direction: column; gap: 3px; }
+  .result-chat-players { grid-template-columns: repeat(2, 1fr); }
 }
 
 /* Start controls and sound mixer -------------------------------------- */
